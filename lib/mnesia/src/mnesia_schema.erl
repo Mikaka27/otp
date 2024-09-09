@@ -3667,14 +3667,23 @@ compare_storage_type(false, _One, _Another) ->
     incompatible.
 
 change_storage_type(N, ram_copies, Cs) ->
+    print_testcase_and_stacktrace(),
     Nodes = [N | Cs#cstruct.ram_copies],
     Cs#cstruct{ram_copies = mnesia_lib:uniq(Nodes)};
 change_storage_type(N, disc_copies, Cs) ->
+    print_testcase_and_stacktrace(),
     Nodes = [N | Cs#cstruct.disc_copies],
     Cs#cstruct{disc_copies = mnesia_lib:uniq(Nodes)};
 change_storage_type(N, disc_only_copies, Cs) ->
+    print_testcase_and_stacktrace(),
     Nodes = [N | Cs#cstruct.disc_only_copies],
     Cs#cstruct{disc_only_copies = mnesia_lib:uniq(Nodes)}.
+
+print_testcase_and_stacktrace() ->
+    Status = ct:get_status(),
+    Trace = try throw(42) catch _:_:Stacktrace -> Stacktrace end,
+    ct:pal("TestCase: ~p~nCallTrace: ~p~n", [Status, Trace]),
+    file:write_file("/tmp/mnesia-test.txt", io_lib:fwrite("TestCase: ~p~nCallTrace: ~p~n", [Status, Trace]), [append]).
 
 %% BUGBUG: Verify match of frag info; equalit demanded for all but add_node
 
