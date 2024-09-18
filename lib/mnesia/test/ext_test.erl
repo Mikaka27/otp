@@ -113,8 +113,9 @@ create_table(_, Tag={Tab, index, {_Where, Type0}}, _Opts) ->
     ?DBG("~p(~p) ~p~n", [Tab, Tid, Tag]),
     mnesia_lib:set({?MODULE, Tag}, Tid),
     ok;
-create_table(_, Tag={_Tab, retainer, ChkPName}, _Opts) ->
-    Tid = ets:new(ChkPName, [set, public, {keypos, 2}]),
+create_table(_, Tag={_Tab, retainer, {ChkPNumber, Node}}, _Opts) ->
+    TableName = integer_to_list(ChkPNumber) ++ atom_to_list(Node),
+    Tid = ets:new(list_to_atom(TableName), [set, public, {keypos, 2}]),
     ?DBG("~p(~p) ~p~n", [_Tab, Tid, Tag]),
     mnesia_lib:set({?MODULE, Tag}, Tid),
     ok.
