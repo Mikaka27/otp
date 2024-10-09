@@ -1104,8 +1104,10 @@ allowed:
       Reason :: term().
 
 open_file(Tab, Args) when is_list(Args) ->
+    io:fwrite("In open_file, Tab: ~p, Args: ~p~n", [Tab, Args]),
     case catch defaults(Tab, Args) of
         OpenArgs when is_record(OpenArgs, open_args) ->
+            io:fwrite("In OpenArgs: ~p~n", [OpenArgs]),
             case dets_server:open_file(Tab, OpenArgs) of
                 badarg -> % Should not happen.
                     erlang:error(dets_process_died, [Tab, Args]);
@@ -1113,6 +1115,7 @@ open_file(Tab, Args) when is_list(Args) ->
                     einval(Reply, [Tab, Args])
             end;
 	_ ->
+        io:fwrite("Invalid Args~n", []),
 	    erlang:error(badarg, [Tab, Args])
     end;
 open_file(Tab, Arg) ->

@@ -412,6 +412,7 @@ handle_call({unsafe_close_log, Name}, _From, State) ->
 handle_call({unsafe_create_external, Tab, Alias, Mod, Cs}, _From, State) ->
     case ?CATCH(Mod:create_table(Alias, Tab, mnesia_schema:cs2list(Cs))) of
 	{'EXIT', ExitReason} ->
+        io:fwrite("Catch, Mod: ~p, Alias: ~p, Tab: ~p, Cs: ~p~n", [Mod, Alias, Tab, mnesia_schema:cs2list(Cs)]),
 	    {reply, {error, ExitReason}, State};
 	Reply ->
 	    {reply, Reply, State}
