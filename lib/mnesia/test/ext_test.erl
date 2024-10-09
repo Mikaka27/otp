@@ -62,6 +62,9 @@
 semantics(ext_ets, storage) -> ram_copies;
 semantics(ext_ets, types  ) -> [set, ordered_set, bag];
 semantics(ext_ets, index_types) -> [ordered];
+semantics(ext_dets, storage) -> disc_copies;
+semantics(ext_dets, types  ) -> [set, ordered_set, bag];
+semantics(ext_dets, index_types) -> [ordered];
 semantics(_Alias, _) ->
     undefined.
 
@@ -97,6 +100,9 @@ remove_aliases(_) ->
 
 check_definition(ext_ets, _Tab, _Nodes, _Props) ->
     ?DBG("~p ~p ~p~n", [_Tab, _Nodes, _Props]),
+    ok;
+check_definition(ext_dets, _Tab, _Nodes, _Props) ->
+    ?DBG("~p ~p ~p~n", [_Tab, _Nodes, _Props]),
     ok.
 
 create_table(ext_ets, Tab, Props) when is_atom(Tab) ->
@@ -104,7 +110,12 @@ create_table(ext_ets, Tab, Props) when is_atom(Tab) ->
     ?DBG("~p Create: ~p(~p) ~p~n", [self(), Tab, Tid, Props]),
     mnesia_lib:set({?MODULE, Tab}, Tid),
     ok;
-create_table(_, Tag={Tab, index, {_Where, Type0}}, _Opts) ->
+create_table(ext_dets, Tab, Props) when is_atom(Tab) ->
+    {ok, Tid} = mnesia_monitor:unsafe_open_dets(Tab, [{type, proplists:get_value(type, Props, set)}, {keypos, 2}]),
+    ?DBG("~p Create: ~p(~p) ~p~n", [self(), Tab, Tid, Props]),
+    mnesia_lib:set({?MODULE, Tab}, Tid),
+    ok;
+create_table(ext_ets, Tag={Tab, index, {_Where, Type0}}, _Opts) ->
     Type = case Type0 of
 	       ordered -> ordered_set;
 	       _ -> Type0
@@ -113,9 +124,24 @@ create_table(_, Tag={Tab, index, {_Where, Type0}}, _Opts) ->
     ?DBG("~p(~p) ~p~n", [Tab, Tid, Tag]),
     mnesia_lib:set({?MODULE, Tag}, Tid),
     ok;
-create_table(_, Tag={_Tab, retainer, {ChkPNumber, Node}}, _Opts) ->
+create_table(ext_dets, Tag={Tab, index, {_Where, Type0}}, _Opts) ->
+    Type = case Type0 of
+	       ordered -> ordered_set;
+	       _ -> Type0
+	   end,
+    {ok, Tid} = mnesia_monitor:unsafe_open_dets(Tab, [{type, Type}]),
+    ?DBG("~p(~p) ~p~n", [Tab, Tid, Tag]),
+    mnesia_lib:set({?MODULE, Tag}, Tid),
+    ok;
+create_table(ext_ets, Tag={_Tab, retainer, {ChkPNumber, Node}}, _Opts) ->
     TableName = integer_to_list(ChkPNumber) ++ atom_to_list(Node),
     Tid = ets:new(list_to_atom(TableName), [set, public, {keypos, 2}]),
+    ?DBG("~p(~p) ~p~n", [_Tab, Tid, Tag]),
+    mnesia_lib:set({?MODULE, Tag}, Tid),
+    ok;
+create_table(ext_dets, Tag={_Tab, retainer, {ChkPNumber, Node}}, _Opts) ->
+    TableName = integer_to_list(ChkPNumber) ++ atom_to_list(Node),
+    Tid = mnesia_monitor:unsafe_open_dets(list_to_atom(TableName), [{type, set}, {keypos, 2}]),
     ?DBG("~p(~p) ~p~n", [_Tab, Tid, Tag]),
     mnesia_lib:set({?MODULE, Tag}, Tid),
     ok.
@@ -123,6 +149,16 @@ create_table(_, Tag={_Tab, retainer, {ChkPNumber, Node}}, _Opts) ->
 delete_table(ext_ets, Tab) ->
     try
       ets:delete(mnesia_lib:val({?MODULE,Tab})),
+      mnesia_lib:unset({?MODULE,Tab}),
+      ok
+    catch _:_ ->
+	    ?DBG({double_delete, Tab}),
+	    ok
+    end;
+delete_table(ext_dets, Tab) ->
+    try
+      mnesia_monitor:unsafe_close_dets(mnesia_lib:val({?MODULE,Tab})),
+      file:delete(mnesia_lib:val({?MODULE,Tab})),
       mnesia_lib:unset({?MODULE,Tab}),
       ok
     catch _:_ ->
@@ -150,6 +186,10 @@ receive_data(Data, ext_ets, Name, Sender, {Name, Tab, Sender}=State) ->
     ?DBG({Data,State}),
     true = ets:insert(Tab, Data),
     {more, State};
+receive_data(Data, ext_dets, Name, Sender, {Name, Tab, Sender}=State) ->
+    ?DBG({Data,State}),
+    ok = dets:insert(Tab, Data),
+    {mode, State};
 receive_data(Data, Alias, Tab, Sender, {Name, Sender}) ->
     receive_data(Data, Alias, Tab, Sender, {Name, mnesia_lib:val({?MODULE,Tab}), Sender}).
 
@@ -160,11 +200,17 @@ receive_done(_Alias, _Tab, _Sender, _State) ->
 close_table(Alias, Tab) -> sync_close_table(Alias, Tab).
 
 sync_close_table(ext_ets, _Tab) ->
-    ?DBG(_Tab).
+    ?DBG(_Tab);
+sync_close_table(ext_dets, Tab) ->
+    ?DBG(Tab),
+    ok = mnesia_monitor:unsafe_close_dets(Tab).
 
 fixtable(ext_ets, Tab, Bool) ->
     ?DBG({Tab,Bool}),
-    ets:safe_fixtable(mnesia_lib:val({?MODULE,Tab}), Bool).
+    ets:safe_fixtable(mnesia_lib:val({?MODULE,Tab}), Bool);
+fixtable(ext_dets, Tab, Bool) ->
+    ?DBG({Tab,Bool}),
+    dets:safe_fixtable(mnesia_lib:val({?MODULE,Tab}), Bool).
 
 info(ext_ets, Tab, Type) ->
     ?DBG({Tab,Type}),
@@ -173,6 +219,14 @@ info(ext_ets, Tab, Type) ->
 	Val -> Val
     catch _:_ ->
 	    undefined
+    end;
+info(ext_dets, Tab, Type) ->
+    ?DBG({Tab,Type}),
+    Tid = mnesia_lib:val({?MODULE,Tab}),
+    try dets:info(Tid, Type) of
+    Val -> Val
+    catch _:_ ->
+        undefined
     end.
 
 real_suffixes() ->
@@ -204,48 +258,76 @@ insert(ext_ets, Tab, Obj) ->
     end.
 
 lookup(ext_ets, Tab, Key) ->
-    ets:lookup(mnesia_lib:val({?MODULE,Tab}), Key).
+    ets:lookup(mnesia_lib:val({?MODULE,Tab}), Key);
+lookup(ext_dets, Tab, Key) ->
+    dets:lookup(mnesia_lib:val({?MODULE,Tab}), Key).
 
 delete(ext_ets, Tab, Key) ->
-    ets:delete(mnesia_lib:val({?MODULE,Tab}), Key).
+    ets:delete(mnesia_lib:val({?MODULE,Tab}), Key);
+delete(ext_dets, Tab, Key) ->
+    dets:delete(mnesia_lib:val({?MODULE,Tab}), Key).
 
 match_delete(ext_ets, Tab, Pat) ->
-    ets:match_delete(mnesia_lib:val({?MODULE,Tab}), Pat).
+    ets:match_delete(mnesia_lib:val({?MODULE,Tab}), Pat);
+match_delete(ext_dets, Tab, Pat) ->
+    dets:match_delete(mnesia_lib:val({?MODULE,Tab}), Pat).
 
 first(ext_ets, Tab) ->
-    ets:first(mnesia_lib:val({?MODULE,Tab})).
+    ets:first(mnesia_lib:val({?MODULE,Tab}));
+first(ext_dets, Tab) ->
+    dets:first(mnesia_lib:val({?MODULE,Tab})).
 
 last(Alias, Tab) -> first(Alias, Tab).
 
 next(ext_ets, Tab, Key) ->
-    ets:next(mnesia_lib:val({?MODULE,Tab}), Key).
+    ets:next(mnesia_lib:val({?MODULE,Tab}), Key);
+next(ext_dets, Tab, Key) ->
+    dets:next(mnesia_lib:val({?MODULE,Tab}), Key).
 
 prev(Alias, Tab, Key) ->
     next(Alias, Tab, Key).
 
 slot(ext_ets, Tab, Pos) ->
-    ets:slot(mnesia_lib:val({?MODULE,Tab}), Pos).
+    ets:slot(mnesia_lib:val({?MODULE,Tab}), Pos);
+slot(ext_dets, Tab, Pos) ->
+    dets:slot(mnesia_lib:val({?MODULE,Tab}), Pos).
 
 update_counter(ext_ets, Tab, C, Val) ->
-    ets:update_counter(mnesia_lib:val({?MODULE,Tab}), C, Val).
+    ets:update_counter(mnesia_lib:val({?MODULE,Tab}), C, Val);
+update_counter(ext_dets, Tab, C, Val) ->
+    dets:update_counter(mnesia_lib:val({?MODULE,Tab}), C, Val).
 
 select('$end_of_table' = End) -> End;
-select({ext_ets, C}) ->  ets:select(C).
+select({ext_ets, C}) ->  ets:select(C);
+select({ext_dets, C}) -> dets:select(C).
 
 select(Alias, Tab, Ms) ->
-    Res = select(Alias, Tab, Ms, 100000),
-    select_1(Res).
+    {Type, Res} = select(Alias, Tab, Ms, 100000),
+    select_1(Type, Res).
 
-select_1('$end_of_table') -> [];
-select_1({Acc, C}) ->
+select_1(_Type, '$end_of_table') -> [];
+select_1(ext_ets, {Acc, C}) ->
     case ets:select(C) of
 	'$end_of_table' -> Acc;
 	{New, Cont} ->
-	    select_1({New ++ Acc, Cont})
+	    select_1(ext_ets, {New ++ Acc, Cont})
+    end;
+select_1(ext_dets, {Acc, C}) ->
+    case dets:select(C) of
+    '$end_of_table' -> Acc;
+    {New, Cont} ->
+        select_1(ext_dets, {New ++ Acc, Cont})
     end.
 
 select(ext_ets, Tab, Ms, Limit) when is_integer(Limit); Limit =:= infinity ->
-    ets:select(mnesia_lib:val({?MODULE,Tab}), Ms, Limit).
+    {ext_ets, ets:select(mnesia_lib:val({?MODULE,Tab}), Ms, Limit)};
+select(ext_dets, Tab, Ms, Limit) when is_integer(Limit); Limit =:= infinity ->
+    {ext_dets, dets:select(mnesia_lib:val({?MODULE,Tab}), Ms, Limit)}.
 
 repair_continuation(Cont, Ms) ->
-    ets:repair_continuation(Cont, Ms).
+    case element(1, Cont) of
+        dets_cont ->
+            dets:repair_continuation(Cont, Ms);
+        _ ->
+            ets:repair_continuation(Cont, Ms)
+    end.

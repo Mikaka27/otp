@@ -49,7 +49,7 @@ backup_and_restore_fails_with_external_backend(Config) when is_list(Config) ->
         {type, ordered_set},
         {record_name, some_rec},
         {attributes, record_info(fields, some_rec)},
-        {ext_ets, [Node]}
+        {ext_dets, [Node]}
     ]),
     {atomic, ok} = mnesia:add_table_index(table, #some_rec.some_int),
     ok = mnesia:backup("bup0.BUP"),
