@@ -46,7 +46,7 @@ backup_and_restore_fails_with_external_backend(Config) when is_list(Config) ->
 
     [Node] = ?acquire_nodes(1, Config),
     {atomic, ok} = mnesia:create_table(table, [
-        {type, ordered_set},
+        {type, set},
         {record_name, some_rec},
         {attributes, record_info(fields, some_rec)},
         {ext_dets, [Node]}

@@ -111,13 +111,9 @@ create_table(ext_ets, Tab, Props) when is_atom(Tab) ->
     mnesia_lib:set({?MODULE, Tab}, Tid),
     ok;
 create_table(ext_dets, Tab, Props) when is_atom(Tab) ->
-    Type = case proplists:get_value(type, Props, set) of
-        ordered -> set;
-        Type0 -> Type0
-    end,
     io:fwrite("In create_table, Alias: ~p, Tab: ~p, Props: ~p~n", [ext_dets, Tab, Props]),
     % {ok, Tid} = mnesia_monitor:unsafe_open_dets(Tab, [{type, proplists:get_value(type, Props, set)}, {keypos, 2}]),
-    {ok, Tid} = dets:open_file(Tab, [{type, Type}, {keypos, 2}]),
+    {ok, Tid} = dets:open_file(Tab, [{type, proplists:get_value(type, Props, set)}, {keypos, 2}]),
     ?DBG("~p Create: ~p(~p) ~p~n", [self(), Tab, Tid, Props]),
     mnesia_lib:set({?MODULE, Tab}, Tid),
     ok;
