@@ -4,7 +4,10 @@
          init_per_group/2, end_per_group/2,
          suite/0, all/0, groups/0]).
 
--export([conversion_from_external_to_disc_copies_results_in_data_loss_after_node_restart/1, backup_and_restore_fails_with_external_backend/1]).
+-export([
+    conversion_from_external_to_disc_copies_results_in_data_loss_after_node_restart/1,
+    backup_and_restore_fails_with_external_backend/1
+]).
 
 -include("mnesia_test_lib.hrl").
 
@@ -39,15 +42,11 @@ suite() -> [{ct_hooks,[{ts_install_cth,[{nodenames,1}]}]}].
 
 conversion_from_external_to_disc_copies_results_in_data_loss_after_node_restart(Config) when is_list(Config) ->
     Node = node(),
-    Data1 = [
-        #some_rec{some_id = a, some_int = 1, some_string = "1"},
-        #some_rec{some_id = b, some_int = 2, some_string = "2"},
-        #some_rec{some_id = c, some_int = 3, some_string = "3"}
-    ],
-    Data2 = [
-        #some_rec{some_id = d, some_int = 4, some_string = "4"},
-        #some_rec{some_id = e, some_int = 5, some_string = "5"},
-        #some_rec{some_id = f, some_int = 6, some_string = "6"}
+    Data = [
+        #some_rec{some_id = a, some_int = 1, some_string = "something" },
+        #some_rec{some_id = b, some_int = 2, some_string = "anything"  },
+        #some_rec{some_id = c, some_int = 3, some_string = "everything"},
+        #some_rec{some_id = d, some_int = 4, some_string = "nothing"   }
     ],
 
     [Node] = ?acquire(1, Config),
@@ -61,15 +60,11 @@ conversion_from_external_to_disc_copies_results_in_data_loss_after_node_restart(
         {attributes, record_info(fields, some_rec)},
         {disc_copies, [Node]}
     ]),
-    {atomic, ok} = mnesia:add_table_index(table, #some_rec.some_int),
-    ok = mnesia:backup("bup0.BUP"),
 
     ok = mnesia:activity(transaction, fun() ->
-        lists:foreach(fun(Elem) -> mnesia:write(table, Elem, write) end, Data1)
+        lists:foreach(fun(Elem) -> mnesia:write(table, Elem, write) end, Data)
     end),
-    ok = mnesia:backup("bup1.BUP"),
 
-<<<<<<< HEAD
     {atomic, ok} = mnesia:change_table_copy_type(table, Node, ext_ets),
     Data = mnesia:activity(transaction, fun() ->
         mnesia:match_object(table, #some_rec{_ = '_'}, read) end
@@ -121,13 +116,6 @@ backup_and_restore_fails_with_external_backend(Config) when is_list(Config) ->
     end),
     ok = mnesia:backup("bup2.BUP"),
 
-=======
-    ok = mnesia:activity(transaction, fun() ->
-        lists:foreach(fun(Elem) -> mnesia:write(table, Elem, write) end, Data2)
-    end),
-    ok = mnesia:backup("bup2.BUP"),
-
->>>>>>> 4ffde8ca89 (Attempt 2)
     ok = load_backup("bup0.BUP"),
     [] = mnesia:dirty_match_object(table, #some_rec{_ = '_'}),
     [] = mnesia:dirty_index_read(table, 2, #some_rec.some_int),
@@ -147,8 +135,4 @@ load_backup(BUP) ->
     stopped = mnesia:stop(),
     timer:sleep(3000),
     ok = mnesia:start(),
-<<<<<<< HEAD
     ok = mnesia:wait_for_tables([table], 5000).
-=======
-    ok = mnesia:wait_for_tables([table], 5000).
->>>>>>> 4ffde8ca89 (Attempt 2)
