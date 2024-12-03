@@ -20,6 +20,8 @@
 
 -module(ext_test).
 
+-include("ext_test_server.hrl").
+
 %% Initializations
 -export([init_backend/0, add_aliases/1, remove_aliases/1,
 	 check_definition/4, semantics/2]).
@@ -47,29 +49,17 @@
 	 select/1, select/3, select/4, repair_continuation/2
 	]).
 
--ifdef(DEBUG).
--define(DBG(DATA), io:format("~p:~p: ~p~n",[?MODULE, ?LINE, DATA])).
--define(DBG(FORMAT, ARGS), io:format("~p:~p: " ++ FORMAT,[?MODULE, ?LINE] ++ ARGS)).
--else.
--define(DBG(DATA), ok).
--define(DBG(FORMAT, ARGS), ok).
--endif.
-
-%% types() ->
-%%     [{fs_copies, ?MODULE},
-%%      {raw_fs_copies, ?MODULE}].
-
-semantics(ext_ets, storage) -> ram_copies;
-semantics(ext_ets, types  ) -> [set, ordered_set, bag];
-semantics(ext_ets, index_types) -> [ordered];
+semantics(ext_ram_copies, storage) -> ram_copies;
+semantics(ext_ram_copies, types  ) -> [set, ordered_set, bag];
+semantics(ext_ram_copies, index_types) -> [ordered];
+semantics(ext_disc_only_copies, storage) -> disc_only_copies;
+semantics(ext_disc_only_copies, types  ) -> [set, bag];
+semantics(ext_disc_only_copies, index_types) -> [bag];
 semantics(_Alias, _) ->
     undefined.
 
-%% valid_op(_, _) ->
-%%     true.
-
 init_backend() ->
-    ?DBG(init_backend),
+    ?DBG(),
     %% cheat and stuff a marker in mnesia_gvar
     K = backend_init_marker(),
     case try ets:lookup_element(mnesia_gvar, K, 2) catch _:_ -> error end of
@@ -80,12 +70,8 @@ init_backend() ->
     end,
     ok.
 
-backend_init_marker() ->
-    {test, ?MODULE, backend_init}.
-
 add_aliases(_As) ->
     ?DBG(_As),
-    %ct:log("add_aliases(~p)", [_As]),
     true = mnesia_lib:val(backend_init_marker()),
     ok.
 
@@ -95,84 +81,46 @@ remove_aliases(_) ->
 
 %% Table operations
 
-check_definition(ext_ets, _Tab, _Nodes, _Props) ->
-    ?DBG("~p ~p ~p~n", [_Tab, _Nodes, _Props]),
-    ok.
-
-create_table(ext_ets, Tab, Props) when is_atom(Tab) ->
-    Tid = ets:new(Tab, [public, proplists:get_value(type, Props, set), {keypos, 2}]),
-    ?DBG("~p Create: ~p(~p) ~p~n", [self(), Tab, Tid, Props]),
-    mnesia_lib:set({?MODULE, Tab}, Tid),
+check_definition(ext_ram_copies, _Tab, _Nodes, _Props) ->
+    ?DBG("~p ~p ~p~n", [ext_test_server:tab_to_list(_Tab), _Nodes, _Props]),
     ok;
-create_table(_, Tag={Tab, index, {_Where, Type0}}, _Opts) ->
-    Type = case Type0 of
-	       ordered -> ordered_set;
-	       _ -> Type0
-	   end,
-    Tid = ets:new(Tab, [public, Type]),
-    ?DBG("~p(~p) ~p~n", [Tab, Tid, Tag]),
-    mnesia_lib:set({?MODULE, Tag}, Tid),
-    ok;
-create_table(_, Tag={_Tab, retainer, ChkPName}, _Opts) ->
-    Tid = ets:new(ChkPName, [set, public, {keypos, 2}]),
-    ?DBG("~p(~p) ~p~n", [_Tab, Tid, Tag]),
-    mnesia_lib:set({?MODULE, Tag}, Tid),
+check_definition(ext_disc_only_copies, _Tab, _Nodes, _Props) ->
+    ?DBG("~p ~p ~p~n", [ext_test_server:tab_to_list(_Tab), _Nodes, _Props]),
     ok.
 
-delete_table(ext_ets, Tab) ->
-    try
-      ets:delete(mnesia_lib:val({?MODULE,Tab})),
-      mnesia_lib:unset({?MODULE,Tab}),
-      ok
-    catch _:_ ->
-	    ?DBG({double_delete, Tab}),
-	    ok
-    end.
+create_table(Alias, Tab, Props) ->
+    gen_server:call(?SERVER, {?FUNCTION_NAME, Alias, Tab, Props}).
 
-load_table(ext_ets, _Tab, init_index, _Cs) -> ok;
-load_table(ext_ets, _Tab, _LoadReason, _Cs) ->
-    ?DBG("Load ~p ~p~n", [_Tab, _LoadReason]),
-    ok.
-%%     mnesia_monitor:unsafe_create_external(Tab, ext_ets, ?MODULE, Cs).
+delete_table(Alias, Tab) ->
+    gen_server:call(?SERVER, {?FUNCTION_NAME, Alias, Tab}).
 
-sender_init(Alias, Tab, _RemoteStorage, _Pid) ->
-    KeysPerTransfer = 100,
-    {standard,
-     fun() -> mnesia_lib:db_init_chunk({ext,Alias,?MODULE}, Tab, KeysPerTransfer) end,
-     fun(Cont) -> mnesia_lib:db_chunk({ext,Alias,?MODULE}, Cont) end}.
+load_table(Alias, Tab, LoadReason, Cs) ->
+    gen_server:call(?SERVER, {?FUNCTION_NAME, Alias, Tab, LoadReason, Cs}).
+
+sender_init(Alias, Tab, RemoteStorage, Pid) ->
+    gen_server:call(?SERVER, {?FUNCTION_NAME, Alias, Tab, RemoteStorage, Pid}).
 
 receiver_first_message(Sender, {first, Size}, _Alias, Tab) ->
-    ?DBG({first,Size}),
+    ?DBG({first, Size}),
     {Size, {Tab, Sender}}.
 
-receive_data(Data, ext_ets, Name, Sender, {Name, Tab, Sender}=State) ->
-    ?DBG({Data,State}),
-    true = ets:insert(Tab, Data),
-    {more, State};
-receive_data(Data, Alias, Tab, Sender, {Name, Sender}) ->
-    receive_data(Data, Alias, Tab, Sender, {Name, mnesia_lib:val({?MODULE,Tab}), Sender}).
+receive_data(Data, Alias, Name, Sender, State) ->
+    gen_server:call(?SERVER, {?FUNCTION_NAME, Data, Alias, Name, Sender, State}).
 
 receive_done(_Alias, _Tab, _Sender, _State) ->
-    ?DBG({done,_State}),
+    ?DBG({done, _State}),
     ok.
 
 close_table(Alias, Tab) -> sync_close_table(Alias, Tab).
 
-sync_close_table(ext_ets, _Tab) ->
-    ?DBG(_Tab).
+sync_close_table(Alias, Tab) ->
+    gen_server:call(?SERVER, {?FUNCTION_NAME, Alias, Tab}).
 
-fixtable(ext_ets, Tab, Bool) ->
-    ?DBG({Tab,Bool}),
-    ets:safe_fixtable(mnesia_lib:val({?MODULE,Tab}), Bool).
+fixtable(Alias, Tab, Bool) ->
+    gen_server:call(?SERVER, {?FUNCTION_NAME, Alias, Tab, Bool}).
 
-info(ext_ets, Tab, Type) ->
-    ?DBG({Tab,Type}),
-    Tid = mnesia_lib:val({?MODULE,Tab}),
-    try ets:info(Tid, Type) of
-	Val -> Val
-    catch _:_ ->
-	    undefined
-    end.
+info(Alias, Tab, Type) ->
+    gen_server:call(?SERVER, {?FUNCTION_NAME, Alias, Tab, Type}).
 
 real_suffixes() ->
     [".dat"].
@@ -193,58 +141,46 @@ validate_record(_Alias, _Tab, RecName, Arity, Type, _Obj) ->
 validate_key(_Alias, _Tab, RecName, Arity, Type, _Key) ->
     {RecName, Arity, Type}.
 
-insert(ext_ets, Tab, Obj) ->
-    ?DBG({Tab,Obj}),
-    try
-	ets:insert(mnesia_lib:val({?MODULE,Tab}), Obj),
-	ok
-    catch _:Reason ->
-	    io:format("CRASH ~p ~p~n",[Reason, mnesia_lib:val({?MODULE,Tab})])
-    end.
+insert(Alias, Tab, Obj) ->
+    gen_server:call(?SERVER, {?FUNCTION_NAME, Alias, Tab, Obj}).
 
-lookup(ext_ets, Tab, Key) ->
-    ets:lookup(mnesia_lib:val({?MODULE,Tab}), Key).
+lookup(Alias, Tab, Obj) ->
+    gen_server:call(?SERVER, {?FUNCTION_NAME, Alias, Tab, Obj}).
 
-delete(ext_ets, Tab, Key) ->
-    ets:delete(mnesia_lib:val({?MODULE,Tab}), Key).
+delete(Alias, Tab, Key) ->
+    gen_server:call(?SERVER, {?FUNCTION_NAME, Alias, Tab, Key}).
 
-match_delete(ext_ets, Tab, Pat) ->
-    ets:match_delete(mnesia_lib:val({?MODULE,Tab}), Pat).
+match_delete(Alias, Tab, Pat) ->
+    gen_server:call(?SERVER, {?FUNCTION_NAME, Alias, Tab, Pat}).
 
-first(ext_ets, Tab) ->
-    ets:first(mnesia_lib:val({?MODULE,Tab})).
+first(Alias, Tab) ->
+    gen_server:call(?SERVER, {?FUNCTION_NAME, Alias, Tab}).
 
 last(Alias, Tab) -> first(Alias, Tab).
 
-next(ext_ets, Tab, Key) ->
-    ets:next(mnesia_lib:val({?MODULE,Tab}), Key).
+next(Alias, Tab, Key) ->
+    gen_server:call(?SERVER, {?FUNCTION_NAME, Alias, Tab, Key}).
 
 prev(Alias, Tab, Key) ->
     next(Alias, Tab, Key).
 
-slot(ext_ets, Tab, Pos) ->
-    ets:slot(mnesia_lib:val({?MODULE,Tab}), Pos).
+slot(Alias, Tab, Pos) ->
+    gen_server:call(?SERVER, {?FUNCTION_NAME, Alias, Tab, Pos}).
 
-update_counter(ext_ets, Tab, C, Val) ->
-    ets:update_counter(mnesia_lib:val({?MODULE,Tab}), C, Val).
+update_counter(Alias, Tab, C, Val) ->
+    gen_server:call(?SERVER, {?FUNCTION_NAME, Alias, Tab, C, Val}).
 
-select('$end_of_table' = End) -> End;
-select({ext_ets, C}) ->  ets:select(C).
+select(Continuation) ->
+    gen_server:call(?SERVER, {?FUNCTION_NAME, Continuation}).
 
 select(Alias, Tab, Ms) ->
-    Res = select(Alias, Tab, Ms, 100000),
-    select_1(Res).
+    gen_server:call(?SERVER, {?FUNCTION_NAME, Alias, Tab, Ms}).
 
-select_1('$end_of_table') -> [];
-select_1({Acc, C}) ->
-    case ets:select(C) of
-	'$end_of_table' -> Acc;
-	{New, Cont} ->
-	    select_1({New ++ Acc, Cont})
-    end.
-
-select(ext_ets, Tab, Ms, Limit) when is_integer(Limit); Limit =:= infinity ->
-    ets:select(mnesia_lib:val({?MODULE,Tab}), Ms, Limit).
+select(Alias, Tab, Ms, Limit) ->
+    gen_server:call(?SERVER, {?FUNCTION_NAME, Alias, Tab, Ms, Limit}).
 
 repair_continuation(Cont, Ms) ->
-    ets:repair_continuation(Cont, Ms).
+    gen_server:call(?SERVER, {?FUNCTION_NAME, Cont, Ms}).
+
+backend_init_marker() ->
+    {test, ext_test, backend_init}.

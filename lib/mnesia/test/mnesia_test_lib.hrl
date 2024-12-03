@@ -151,4 +151,4 @@
 -define(verify_mnesia(Ups, Downs),
 	mnesia_test_lib:verify_mnesia(Ups, Downs, ?FILE, ?LINE)).
 
--define(BACKEND, [{backend_types, [{ext_ets, ext_test},{ext_dets, ext_test}]}]).
+-define(BACKEND, [{backend_types, [{ext_ram_copies, ext_test},{ext_disc_only_copies, ext_test}]}]).

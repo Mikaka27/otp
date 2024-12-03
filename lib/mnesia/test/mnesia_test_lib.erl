@@ -1031,9 +1031,10 @@ verify_replica_location(Tab, DiscOnly0, Ram0, Disc0, AliveNodes0) ->
     timer:sleep(100),
 
     S1 = ?match(AliveNodes, lists:sort(mnesia:system_info(running_db_nodes))),
-    S2 = ?match(DiscOnly, lists:sort(mnesia:table_info(Tab, disc_only_copies))),
+    S2 = ?match(DiscOnly, lists:sort(mnesia:table_info(Tab, disc_only_copies) ++
+					mnesia:table_info(Tab, ext_disc_only_copies))),
     S3 = ?match(Ram, lists:sort(mnesia:table_info(Tab, ram_copies) ++
-				    mnesia:table_info(Tab, ext_ets))),
+				    mnesia:table_info(Tab, ext_ram_copies))),
     S4 = ?match(Disc, lists:sort(mnesia:table_info(Tab, disc_copies))),
     S5 = ?match(Write, lists:sort(mnesia:table_info(Tab, where_to_write))),
     S6 = case lists:member(This, Read) of
