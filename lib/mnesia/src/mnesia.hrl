@@ -39,6 +39,7 @@
 -define(ets_new_table(Tab, Props), _ = ets:new(Tab, Props)).
 -define(ets_delete_table(Tab), ets:delete(Tab)).
 -define(ets_fixtable(Tab, Bool), ets:fixtable(Tab, Bool)).
+-define(ets_give_away(Tab, Pid, GiftData), ets:give_away(Tab, Pid, GiftData)).
 
 
 -define(SAFE(OP), try (OP) catch error:_ -> ok end).

@@ -71,7 +71,8 @@
 	 cast/1,
 	 detect_partitioned_network/2,
 	 has_remote_mnesia_down/1,
-	 negotiate_protocol_impl/2
+	 negotiate_protocol_impl/2,
+     create_mnesia_gvar_if_does_not_exist/0
 	]).
 
 -compile({no_auto_import,[error/2]}).
@@ -253,6 +254,15 @@ terminate_proc(Who, Reason, _State) ->
     mnesia_lib:verbose("~p terminated: ~tp~n", [Who, Reason]),
     ok.
 
+create_mnesia_gvar_if_does_not_exist() ->
+    try
+        ?ets_new_table(mnesia_gvar, [set, public, named_table]),
+        true
+    catch error : badarg ->
+        dbg_out("Cannot create mnesia_gvar, already created elsewhere~n", []),
+        false
+    end.
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Callback functions from gen_server
 
@@ -264,7 +274,7 @@ terminate_proc(Who, Reason, _State) ->
 %%----------------------------------------------------------------------
 init([Parent]) ->
     process_flag(trap_exit, true),
-    ?ets_new_table(mnesia_gvar, [set, public, named_table]),
+    create_mnesia_gvar_if_does_not_exist(),
     ?ets_new_table(mnesia_stats, [set, public, named_table]),
     set(subscribers, []),
     set(activity_subscribers, []),

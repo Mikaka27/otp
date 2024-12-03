@@ -86,6 +86,11 @@ init(Parent) ->
     process_flag(trap_exit, true),
     process_flag(message_queue_data, off_heap),
 
+	%% We must create mnesia_gvar early, since mnesia_bup:tm_fallback_start will use it
+	%% to initialize external backends
+	CreateResult = mnesia_monitor:create_mnesia_gvar_if_does_not_exist(),
+	dbg_out("mnesia_gvar created in mnesia_tm: ~p~n", [CreateResult]),
+
     %% Initialize the schema
     IgnoreFallback = mnesia_monitor:get_env(ignore_fallback_at_startup),
     mnesia_bup:tm_fallback_start(IgnoreFallback),
@@ -94,6 +99,15 @@ init(Parent) ->
     %% Handshake and initialize transaction recovery
     mnesia_recover:init(),
     Early = mnesia_monitor:init(),
+
+	%% Transfer mnesia_gvar to mnesia_monitor if created here
+	case CreateResult of
+		true ->
+			true = ?ets_give_away(mnesia_gvar, whereis(mnesia_monitor), self());
+		false ->
+			ignore
+	end,
+
     AllOthers = mnesia_lib:uniq(Early ++ mnesia_lib:all_nodes()) -- [node()],
     set(original_nodes, AllOthers),
     mnesia_recover:connect_nodes(AllOthers),
