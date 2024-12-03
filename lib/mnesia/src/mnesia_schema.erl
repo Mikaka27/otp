@@ -72,6 +72,8 @@
          info/1,
          init/1,
 	 init_backends/0,
+     init_backends/1,
+     get_backends_to_initialize/1,
          insert_cstruct/3,
 	 is_remote_member/1,
          list2cs/1,
@@ -161,13 +163,22 @@ init(IgnoreFallback) ->
     mnesia_controller:add_active_replica(schema, node()),
     init_backends().
 
-
 init_backends() ->
-    Backends = lists:foldl(fun({Alias, Mod}, Acc) ->
-				   orddict:append(Mod, Alias, Acc)
-			   end, orddict:new(), get_ext_types()),
-    [init_backend(Mod, Aliases) || {Mod, Aliases} <- Backends],
-    ok.
+    Backends = get_backends_to_initialize(get_ext_types()),
+    init_backends(Backends).
+init_backends([]) ->
+    ok;
+init_backends([{Mod, Aliases} = Backend | Rest]) ->
+    try init_backend(Mod, Aliases) of
+        ok ->
+            init_backends(Rest);
+        Other ->
+            verbose("Cannot initialize backend: ~p, Reason: ~p~n", [Backend, Other]),
+            init_backends(Rest)
+    catch error : {backend_already_initialized, _} ->
+        verbose("Backend: ~p is already initialized~n", [Backend]),
+        init_backends(Rest)
+    end.
 
 init_backend(Mod, [_|_] = Aliases) ->
     case Mod:init_backend() of
@@ -176,6 +187,10 @@ init_backend(Mod, [_|_] = Aliases) ->
 	Error ->
 	    mnesia:abort({backend_init_error, Error})
     end.
+
+get_backends_to_initialize(Ext) ->
+    lists:foldl(fun({Alias, Mod}, Acc) ->
+        orddict:append(Mod, Alias, Acc) end, orddict:new(), Ext).
 
 exit_on_error({error, Reason}) ->
     exit(Reason);
