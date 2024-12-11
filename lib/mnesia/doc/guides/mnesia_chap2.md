@@ -130,7 +130,7 @@ erDiagram
         int number
     }
 
-    Dept ||--|| Employee: Manager
+    Dept }|--|| Employee: Manager
     Employee }|--|| Dept: At_dep
     Employee }|--|{ Project: in_proj
 ```
@@ -142,8 +142,8 @@ The database model is as follows:
 - There are three relationships between these entities:
 
   1. A department is managed by an employee, hence the `manager` relationship.
-  1. An employee works at a department, hence the `at_dep` relationship.
-  1. Each employee works on a number of projects, hence the `in_proj`
+  2. An employee works at a department, hence the `at_dep` relationship.
+  3. Each employee works on a number of projects, hence the `in_proj`
      relationship.
 
 ### Defining Structure and Content
@@ -177,7 +177,7 @@ This file defines the following structure for the example database:
 ```
 
 The structure defines six tables in the database. In `Mnesia`, the function
-[`mnesia:create_table(Name, ArgList)`](`mnesia:create_table/2`) creates tables.
+[`mnesia:create_table(Name, Opts)`](`mnesia:create_table/2`) creates tables.
 `Name` is the table name.
 
 > #### Note {: .info }
@@ -188,7 +188,7 @@ The structure defines six tables in the database. In `Mnesia`, the function
 
 For example, the table for employees is created with the function
 `mnesia:create_table(employee, [{attributes, record_info(fields, employee)}])`.
-The table name `employee` matches the name for records specified in `ArgList`.
+The table name `employee` matches the name for records specified in `Opts`.
 The expression `record_info(fields, RecordName)` is processed by the Erlang
 preprocessor and evaluates to a list containing the names of the different
 fields for a record.
@@ -285,8 +285,8 @@ ok
 ```
 
 A set of tables is created. The function
-[`mnesia:create_table(Name, ArgList)`](`mnesia:create_table/2`) creates the
-required database tables. The options available with `ArgList` are explained in
+[`mnesia:create_table(Name, Opts)`](`mnesia:create_table/2`) creates the
+required database tables. The options available with `Opts` are explained in
 [Create New Tables](mnesia_chap3.md#create_tables).
 
 The function `company:init/0` creates the tables. Two tables are of type `bag`.
@@ -326,8 +326,8 @@ mk_projs(_, []) -> ok.
 - The `insert_emp/3` arguments are as follows:
 
   1. `Emp` is an employee record.
-  1. `DeptId` is the identity of the department where the employee works.
-  1. `ProjNames` is a list of the names of the projects where the employee
+  2. `DeptId` is the identity of the department where the employee works.
+  3. `ProjNames` is a list of the names of the projects where the employee
      works.
 
 The function `insert_emp/3` creates a Functional Object (Fun). `Fun` is passed
@@ -551,8 +551,8 @@ following function can be constructed to call from the shell:
 ```erlang
 all_females() ->
     F = fun() ->
-		Female = #employee{sex = female, name = '$1', _ = '_'},
-		mnesia:select(employee, [{Female, [], ['$1']}])
+                Female = #employee{sex = female, name = '$1', _ = '_'},
+                mnesia:select(employee, [{Female, [], ['$1']}])
         end,
     mnesia:transaction(F).
 ```
@@ -592,10 +592,10 @@ within a transaction. Consider the following function:
 ```erlang
 females() ->
     F = fun() ->
-		Q = qlc:q([E#employee.name || E <- mnesia:table(employee),
-					      E#employee.sex == female]),
-		qlc:e(Q)
-	end,
+                Q = qlc:q([E#employee.name || E <- mnesia:table(employee),
+                E#employee.sex == female]),
+                qlc:e(Q)
+        end,
     mnesia:transaction(F).
 ```
 
@@ -630,7 +630,7 @@ raise_females(Amount) ->
     F = fun() ->
                 Q = qlc:q([E || E <- mnesia:table(employee),
                                 E#employee.sex == female]),
-		Fs = qlc:e(Q),
+                Fs = qlc:e(Q),
                 over_write(Fs, Amount)
         end,
     mnesia:transaction(F).

@@ -4273,10 +4273,10 @@ transaction management system. This guarantees that schema updates are performed
 on all nodes in an atomic manner.
 """.
 -spec create_table(Name::table(), Opts::[create_option()]) -> t_result('ok').
-create_table(Name, Arg) when is_list(Arg) ->
-    mnesia_schema:create_table([{name, Name}| Arg]);
-create_table(Name, Arg) ->
-    {aborted, {badarg, Name, Arg}}.
+create_table(Name, Opts) when is_list(Opts) ->
+    mnesia_schema:create_table([{name, Name}| Opts]);
+create_table(Name, Opts) ->
+    {aborted, {badarg, Name, Opts}}.
 
 -doc """
 Permanently delete all replicas of table `Tab`.
