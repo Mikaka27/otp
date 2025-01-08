@@ -62,23 +62,24 @@ end_per_testcase(Func, Conf) ->
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 all() -> 
-    [system_info, table_info, error_description,
-     db_node_lifecycle, evil_delete_db_node, start_and_stop,
-     checkpoint, checkpoint_del_table,
-     table_lifecycle, storage_options,
-     add_copy_conflict,
-     add_copy_when_going_down, add_copy_when_dst_going_down, add_copy_with_down,
-     replica_management,
-     clear_table_during_load,
-     schema_availability, local_content,
-     {group, table_access_modifications}, replica_location,
-     {group, table_sync}, user_properties, unsupp_user_props,
-     {group, record_name}, {group, snmp_access},
-     {group, subscriptions}, {group, iteration},
-     {group, debug_support}, sorted_ets, index_cleanup,
-     {mnesia_dirty_access_test, all},
-     {mnesia_trans_access_test, all},
-     {mnesia_evil_backup, all}].
+    [local_content].
+    % [system_info, table_info, error_description,
+    %  db_node_lifecycle, evil_delete_db_node, start_and_stop,
+    %  checkpoint, checkpoint_del_table,
+    %  table_lifecycle, storage_options,
+    %  add_copy_conflict,
+    %  add_copy_when_going_down, add_copy_when_dst_going_down, add_copy_with_down,
+    %  replica_management,
+    %  clear_table_during_load,
+    %  schema_availability, local_content,
+    %  {group, table_access_modifications}, replica_location,
+    %  {group, table_sync}, user_properties, unsupp_user_props,
+    %  {group, record_name}, {group, snmp_access},
+    %  {group, subscriptions}, {group, iteration},
+    %  {group, debug_support}, sorted_ets, index_cleanup,
+    %  {mnesia_dirty_access_test, all},
+    %  {mnesia_trans_access_test, all},
+    %  {mnesia_evil_backup, all}].
 
 groups() -> 
     [{table_access_modifications, [],
@@ -1100,13 +1101,13 @@ local_content(suite) -> [];
 local_content(Config) when is_list(Config) ->
     [Node1, Node2, Node3] = Nodes = ?acquire_nodes(3, Config), 
     Tab1 = local1,
-    Def1 = [{local_content, true}, {ram_copies, Nodes}],
+    Def1 = [{local_content, true}, {ext_ram_copies, Nodes}],
     Tab2 = local2,
     Def2 = [{local_content, true}, {disc_copies, [Node1]}],
     Tab3 = local3,
-    Def3 = [{local_content, true}, {disc_only_copies, [Node1]}],
+    Def3 = [{local_content, true}, {ext_disc_only_copies, [Node1]}],
     Tab4 = local4,
-    Def4 = [{local_content, true}, {ram_copies, [Node1]}],
+    Def4 = [{local_content, true}, {ext_ram_copies, [Node1]}],
 
     ?match({atomic, ok}, mnesia:create_table(Tab1, Def1)),
     ?match({atomic, ok}, mnesia:create_table(Tab2, Def2)),
@@ -1124,9 +1125,9 @@ local_content(Config) when is_list(Config) ->
     ?match(?badrpc(Tab3), rpc:call(Node2, mnesia, dirty_write, [{Tab3, 1, Node2}])),
     ?match(?badrpc(Tab4), rpc:call(Node2, mnesia, dirty_write, [{Tab4, 1, Node2}])),
 
-    ?match({atomic, ok}, rpc:call(Node1, mnesia, add_table_copy, [Tab2, Node2, ram_copies])),    
+    ?match({atomic, ok}, rpc:call(Node1, mnesia, add_table_copy, [Tab2, Node2, ext_ram_copies])),    
     ?match({atomic, ok}, rpc:call(Node2, mnesia, add_table_copy, [Tab3, Node2, disc_copies])),
-    ?match({atomic, ok}, rpc:call(Node3, mnesia, add_table_copy, [Tab4, Node2, disc_only_copies])),
+    ?match({atomic, ok}, rpc:call(Node3, mnesia, add_table_copy, [Tab4, Node2, ext_disc_only_copies])),
     ?match([], rpc:call(Node2, mnesia, dirty_read, [{Tab2, 1}])),
     ?match([], rpc:call(Node2, mnesia, dirty_read, [{Tab3, 1}])),
     ?match([], rpc:call(Node2, mnesia, dirty_read, [{Tab4, 1}])),

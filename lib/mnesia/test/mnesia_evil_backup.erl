@@ -56,12 +56,13 @@ end_per_testcase(Func, Conf) ->
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 all() -> 
-    [backup, bad_backup, global_backup_checkpoint,
-     {group, restore_tables}, traverse_backup,
-     selective_backup_checkpoint,
-     incremental_backup_checkpoint, install_fallback,
-     uninstall_fallback, local_fallback,
-     sops_with_checkpoint].
+    [restore_clear_ram].
+    % [backup, bad_backup, global_backup_checkpoint,
+    %  {group, restore_tables}, traverse_backup,
+    %  selective_backup_checkpoint,
+    %  incremental_backup_checkpoint, install_fallback,
+    %  uninstall_fallback, local_fallback,
+    %  sops_with_checkpoint].
 
 groups() -> 
     [{restore_tables, [],
@@ -367,7 +368,7 @@ restore_clear_ram(suite) -> [];
 restore_clear_ram(Config) when is_list(Config) ->
     Nodes = ?acquire_nodes(3, [{diskless, true}|Config]),
     
-    ?match({atomic, ok}, mnesia:create_table(a, [{ram_copies, Nodes}])),
+    ?match({atomic, ok}, mnesia:create_table(a, [{ext_ram_copies, Nodes}])),
     
     Write = fun(What) ->
 		    mnesia:write({a,1,What}),

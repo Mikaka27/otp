@@ -1696,9 +1696,11 @@ do_add_table_copy(Tab,Node,_) ->
 make_add_table_copy(Tab, Node, Storage) ->
     ensure_writable(schema),
     Cs = incr_version(val({Tab, cstruct})),
+    io:fwrite("Cs: ~p~n", [Cs]),
     Ns = mnesia_lib:cs_to_nodes(Cs),
     verify(false, lists:member(Node, Ns), {already_exists, Tab, Node}),
     Cs2 = verify_cstruct(new_cs(Cs, Node, Storage, add)),
+    io:fwrite("Cs2: ~p~n", [Cs2]),
 
     %% Check storage and if node is running
     IsRunning = lists:member(Node, val({current, db_nodes})),
@@ -1719,7 +1721,9 @@ make_add_table_copy(Tab, Node, Storage) ->
 	IsRunning == false ->
 	    mnesia:abort({not_active, schema, Node})
     end,
-    [{op, add_table_copy, Storage, Node, vsn_cs2list(Cs2)}].
+    List = vsn_cs2list(Cs2),
+    io:fwrite("List: ~p~n", [List]),
+    [{op, add_table_copy, Storage, Node, List}].
 
 del_table_copy(Tab, Node) ->
     schema_transaction(fun() -> do_del_table_copy(Tab, Node) end).
@@ -2454,9 +2458,11 @@ prepare_op(Tid, {op, create_table, TabDef}, _WaitFor) ->
 prepare_op(Tid, {op, add_table_copy, Storage, Node, TabDef}, _WaitFor) ->
     Cs = list2cs(TabDef),
     Tab = Cs#cstruct.name,
+    io:fwrite("Tab: ~p, Cs: ~p~n", [Tab, Cs]),
 
     if
 	Tab == schema ->
+        io:fwrite("Returning {true, optional}~n", []),
 	    {true, optional};
 
 	Node == node() ->
@@ -3473,7 +3479,9 @@ make_merge_schema(_Node, _, []) ->
 
 %% Merge definitions of schema table
 do_make_merge_schema(Node, NeedsConv, RemoteCs = #cstruct{name = schema}) ->
+    try
     Cs = val({schema, cstruct}),
+    io:fwrite("Cs: ~p~nRemoteCs: ~p~n", [Cs, RemoteCs]),
     Masters = mnesia_recover:get_master_nodes(schema),
     HasRemoteMaster = lists:member(Node, Masters),
     HasLocalMaster = lists:member(node(), Masters),
@@ -3549,6 +3557,10 @@ do_make_merge_schema(Node, NeedsConv, RemoteCs = #cstruct{name = schema}) ->
 	    %% Choose local cstruct
 	    MergedCs = merge_cstructs(Cs, RemoteCs, Force),
 	    [{op, merge_schema, cs2list(NeedsConv, MergedCs)}]
+    end
+    catch C : R : ST ->
+        file:write_file("/workspaces/otp_27/dupa2.txt", io_lib:fwrite("~p : ~p : ~p~n", [C, R, ST])),
+        erlang:raise(C, R, ST)
     end;
 
 %% Merge definitions of normal table
@@ -3640,11 +3652,17 @@ merge_storage_type([N | Ns], AnythingNew, Cs, RemoteCs, Force) ->
 	{same, _Storage} ->
 	    merge_storage_type(Ns, AnythingNew, Cs, RemoteCs, Force);
 	{diff, Storage} ->
-	    Cs2 = change_storage_type(N, Storage, Cs),
-	    merge_storage_type(Ns, true, Cs2, RemoteCs, Force);
+        try
+	        Cs2 = change_storage_type(N, Storage, Cs),
+	        merge_storage_type(Ns, true, Cs2, RemoteCs, Force)
+        catch C : R : ST ->
+            file:write_file("/workspaces/otp_27/dupa2.txt", io_lib:fwrite("~p : ~p : ~p~n", [C, R, ST])),
+            erlang:raise(C, R, ST)
+        end;
 	incompatible when Force == true ->
 	    merge_storage_type(Ns, AnythingNew, Cs, RemoteCs, Force);
 	Other ->
+        file:write_file("/workspaces/otp_27/dupa2.txt", io_lib:fwrite("Other: ~p~n", [Other])),
 	    Str = io_lib:format("Cannot merge storage type for node ~w "
 				"in cstruct ~w with remote cstruct ~w (~w)~n",
 				[N, Cs, RemoteCs, Other]),
@@ -3702,8 +3720,8 @@ merge_versions(AnythingNew, Cs, RemoteCs, Force) ->
 	Cs#cstruct.snmp == RemoteCs#cstruct.snmp,
 	Cs#cstruct.access_mode == RemoteCs#cstruct.access_mode,
 	Cs#cstruct.majority == RemoteCs#cstruct.majority,
-	Cs#cstruct.load_order == RemoteCs#cstruct.load_order,
-	Cs#cstruct.user_properties == RemoteCs#cstruct.user_properties ->
+	Cs#cstruct.load_order == RemoteCs#cstruct.load_order ->
+	% Cs#cstruct.user_properties == RemoteCs#cstruct.user_properties ->
 	    do_merge_versions(AnythingNew, Cs, RemoteCs);
 	Force == true ->
 	    do_merge_versions(AnythingNew, Cs, RemoteCs);

@@ -552,6 +552,7 @@ try_merge_schema(Nodes, Told0, UserFun) ->
 	    timer:sleep(300), % Avoid a endless loop look alike
 	    try_merge_schema(Nodes, Told0, UserFun);
 	Other ->
+        dbg_out("Cannot merge schema, reason: ~p~n", [Other]),
 	    Other
     end.
 

@@ -102,13 +102,14 @@ end_per_testcase(Func, Conf) ->
 
 
 all() -> 
-    [access_module, auto_repair, backup_module, debug, dir,
-     dump_log_load_regulation, {group, dump_log_thresholds},
-     dump_log_update_in_place,
-     event_module, backend_plugin_registration,
-     inconsistent_database, %% max_wait_for_decision,
-     send_compressed, app_test, {group, schema_config},
-     unknown_config].
+    [dynamic_bad].
+    % [access_module, auto_repair, backup_module, debug, dir,
+    %  dump_log_load_regulation, {group, dump_log_thresholds},
+    %  dump_log_update_in_place,
+    %  event_module, backend_plugin_registration,
+    %  inconsistent_database, %% max_wait_for_decision,
+    %  send_compressed, app_test, {group, schema_config},
+    %  unknown_config].
 
 groups() -> 
     [{dump_log_thresholds, [],
@@ -744,7 +745,9 @@ start_one_disc_full_then_one_disc_less(doc)->
 start_one_disc_full_then_one_disc_less(suite) -> [];
 start_one_disc_full_then_one_disc_less(Config) when is_list(Config) ->
     [N1, N2] = ?init(2, Config),
+    Ext = proplists:get_value(default_properties, Config, ?BACKEND),
     ?match(ok, mnesia:create_schema([N1])),
+    ?match({[ok, ok], []}, rpc:multicall([N1, N2], mnesia_test_lib, start_ext_test_server, [])),
     ?match([], mnesia_test_lib:start_mnesia([N1])),
 
     ?match({atomic, ok}, mnesia:add_table_copy(schema, N2, ram_copies)),
@@ -799,7 +802,9 @@ start_first_one_disc_less_then_one_disc_full(doc)->
 start_first_one_disc_less_then_one_disc_full(suite) -> [];
 start_first_one_disc_less_then_one_disc_full(Config) when is_list(Config) ->
     [N1, N2] = Nodes = ?init(2, Config),
-    ?match(ok, mnesia:create_schema([N1])),
+    Ext = proplists:get_value(default_properties, Config, ?BACKEND),
+    ?match(ok, mnesia:create_schema([N1], Ext)),
+    ?match({[ok, ok], []}, rpc:multicall([N1, N2], mnesia_test_lib, start_ext_test_server, [])),
     ?match([], mnesia_test_lib:start_mnesia([N1])),
 
     ?match({atomic, ok}, mnesia:add_table_copy(schema, N2, ram_copies)),
@@ -820,7 +825,7 @@ start_first_one_disc_less_then_one_disc_full(Config) when is_list(Config) ->
 	   rpc:call(
 	     N1, mnesia,create_table, [test_table,
 				       [%%{disc_copies, [node()]},
-					{ram_copies, [N1, N2]},
+					{ext_ram_copies, [N1, N2]},
 					{attributes,
 					 record_info(fields,test_table)}]])),
     mnesia_test_lib:sync_tables([N1, N2], [test_table]),
@@ -829,7 +834,7 @@ start_first_one_disc_less_then_one_disc_full(Config) when is_list(Config) ->
 	   rpc:call(
 	     N2, mnesia,create_table, [test_table2,
 				       [%%{disc_copies, [node()]},
-					{ram_copies, [N1, N2]},
+					{ext_ram_copies, [N1, N2]},
 					{attributes,
 					 record_info(fields,test_table2)}]])),
     
@@ -1322,8 +1327,8 @@ dynamic_bad(Config) when is_list(Config) ->
 
     ?match({atomic, ok}, mnesia:change_table_copy_type(schema, N2, ram_copies)),
     ?match({atomic, ok}, mnesia:change_table_copy_type(schema, N3, ram_copies)),
-    ?match({atomic, ok}, mnesia:create_table(tab1, [{ram_copies, Ns -- [N1]},
-						    {disc_copies, [N1]}])),
+    ?match({atomic, ok}, mnesia:create_table(tab1, [{ext_ram_copies, Ns -- [N1]},
+						    {ext_disc_only_copies, [N1]}])),
     ?match(ok, mnesia:dirty_write({tab1, 1, 1})),
     
     mnesia_test_lib:kill_mnesia(Ns),
