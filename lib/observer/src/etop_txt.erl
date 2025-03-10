@@ -29,6 +29,7 @@
 -include("etop_defs.hrl").
 
 -define(DEFAULT_WIDTH, 89).
+-define(ERASE_ALL, "\e[;H\e[2J~n").
 
 -record(field_widths, {cols      :: pos_integer(),
                        used_cols :: pos_integer(),
@@ -61,7 +62,7 @@ do_update(Prev,Config) ->
 do_update(Fd,Info,Prev,Config) ->
     {Cpu,NProcs,RQ,Clock} = loadinfo(Info,Prev),
     FieldWidths = calc_field_widths(Info#etop_info.procinfo),
-    io:nl(Fd),
+    io:fwrite(?ERASE_ALL),
     writedoubleline(Fd, FieldWidths),
     case Info#etop_info.memi of
 	undefined ->
