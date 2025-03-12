@@ -134,7 +134,10 @@ Terminates `etop`.
 stop() ->
     case whereis(etop_server) of
 	undefined -> not_started;
-	Pid when is_pid(Pid) -> etop_server ! stop
+	Pid when is_pid(Pid) ->
+        Result = etop_server ! stop,
+        exit(etop_input_server, normal),
+        Result
     end.
 
 -doc """
@@ -223,12 +226,38 @@ start(Opts) ->
 		       [set,public,{keypos,#etop_proc_info.pid}]),
     Config4 = Config3#opts{accum_tab=AccumTab},
 
+    %% Switch shell to raw mode
+    ok = shell:start_interactive({noshell, raw}),
+
+    %% Start the input processing server
+    spawn_link(fun stop_on_input/0),
+
     %% Start the output server
     Out = spawn_link(Config4#opts.out_mod, init, [Config4]),
     Config5 = Config4#opts{out_proc = Out},       
     
     init_data_handler(Config5),
     ok.
+
+stop_on_input() ->
+    register(etop_input_server,self()),
+    stop_on_input_loop().
+
+stop_on_input_loop() ->
+    case io:get_chars("", 10) of
+        {error, Reason} ->
+            stop(),
+            io:fwrite("Cannot get user's input, reason: ~p\r\n", [Reason]);
+        eof ->
+            ok;
+        Input ->
+            case string:find(Input, "q") of
+                nomatch ->
+                    stop_on_input_loop();
+                _ ->
+                    stop()
+            end
+    end.
 
 check_runtime_tools_vsn(Node) ->
     case rpc:call(Node,observer_backend,vsn,[]) of

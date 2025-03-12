@@ -29,7 +29,7 @@
 -include("etop_defs.hrl").
 
 -define(DEFAULT_WIDTH, 89).
--define(ERASE_ALL, "\e[;H\e[2J~n").
+-define(ERASE_ALL, "\e[;H\e[2J\r\n").
 
 -record(field_widths, {cols      :: pos_integer(),
                        used_cols :: pos_integer(),
@@ -62,14 +62,14 @@ do_update(Prev,Config) ->
 do_update(Fd,Info,Prev,Config) ->
     {Cpu,NProcs,RQ,Clock} = loadinfo(Info,Prev),
     FieldWidths = calc_field_widths(Info#etop_info.procinfo),
-    io:fwrite(?ERASE_ALL),
+    io:fwrite(Fd, ?ERASE_ALL, []),
     writedoubleline(Fd, FieldWidths),
     case Info#etop_info.memi of
 	undefined ->
-	    io:fwrite(Fd, " ~-72w~10s~n"
-		      " Load:  cpu  ~8w~n"
-		      "        procs~8w~n"
-		      "        runq ~8w~n",
+	    io:fwrite(Fd, " ~-72w~10s\r\n"
+		      " Load:  cpu  ~8w\r\n"
+		      "        procs~8w\r\n"
+		      "        runq ~8w\r\n",
 		      [Config#opts.node,Clock,
 		       Cpu,NProcs,RQ]);
 	Memi ->
@@ -81,12 +81,12 @@ do_update(Fd,Info,Prev,Config) ->
 		       NProcs,Procs,Code,
 		       RQ,Atom,Ets])
     end,
-    io:nl(Fd),
+    io:fwrite(Fd, "\r\n", []),
     writepinfo_header(Fd, FieldWidths),
     writesingleline(Fd, FieldWidths),
     writepinfo(Fd, Info#etop_info.procinfo, modifier(Fd), FieldWidths),
     writedoubleline(Fd, FieldWidths),
-    io:nl(Fd),
+    io:fwrite(Fd, "\r\nPress 'q' to stop etop.\r\n", []),
     Info.
 
 
@@ -189,7 +189,7 @@ writepinfo_header(Fd, #field_widths{init_func = InitFunc, reds = Reds,
         ++ lists:duplicate(max(Mem - 5, 3), $\s) ++
         "Memory"
         ++ lists:duplicate(max(MsgQ - 3, 5), $\s) ++
-        "MsgQ Current Function\n",
+        "MsgQ Current Function\r\n",
 
     io:fwrite(Fd, Header, []).
 
@@ -197,7 +197,7 @@ writesingleline(Fd, FieldWidths) -> writedupline(Fd, $-, FieldWidths).
 writedoubleline(Fd, FieldWidths) -> writedupline(Fd, $=, FieldWidths).
 
 writedupline(Fd, Char, #field_widths{used_cols = UsedCols}) ->
-    Line = lists:duplicate(UsedCols, Char) ++ "\n",
+    Line = lists:duplicate(UsedCols, Char) ++ "\r\n",
     io:fwrite(Fd, Line, []).
 
 writepinfo(Fd,[#etop_proc_info{pid=Pid,
@@ -225,7 +225,7 @@ proc_format(Modifier, #field_widths{init_func = InitFunc, reds = Reds,
     "~" ++ i2l(Reds) ++ "w "
     "~" ++ i2l(Mem) ++"w "
     "~" ++ i2l(MsgQ) ++ "w "
-    "~-" ++ i2l(CurrFunc) ++ Modifier ++ "s~n".
+    "~-" ++ i2l(CurrFunc) ++ Modifier ++ "s\r\n".
 
 to_string(Other,_Modifier) when is_binary(Other) ->
     Other;

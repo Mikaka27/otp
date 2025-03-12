@@ -18,10 +18,10 @@
 %% %CopyrightEnd%
 %%
 -define(SYSFORM,
-	" ~-72w~10s~n"
-	" Load:  cpu  ~8w               Memory:  total    ~8w    binary   ~8w~n"
-	"        procs~8w                        processes~8w    code     ~8w~n"
-	"        runq ~8w                        atom     ~8w    ets      ~8w~n").
+	" ~-72w~10s\r\n"
+	" Load:  cpu  ~8w               Memory:  total    ~8w    binary   ~8w\r\n"
+	"        procs~8w                        processes~8w    code     ~8w\r\n"
+	"        runq ~8w                        atom     ~8w    ets      ~8w\r\n").
 
 -record(opts, {node=node(), port = 8415, accum = false, intv = 5000, lines = 10,
 	       width = 700, height = 340, sort = runtime, tracing = on,
