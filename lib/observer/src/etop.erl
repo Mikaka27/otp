@@ -136,7 +136,7 @@ stop() ->
 	undefined -> not_started;
 	Pid when is_pid(Pid) ->
         Result = etop_server ! stop,
-        exit(etop_input_server, normal),
+        catch exit(etop_input_server, normal),
         Result
     end.
 
@@ -227,7 +227,12 @@ start(Opts) ->
     Config4 = Config3#opts{accum_tab=AccumTab},
 
     %% Switch shell to raw mode
-    ok = shell:start_interactive({noshell, raw}),
+    case shell:whereis() of
+      undefined ->
+        ok = shell:start_interactive({noshell, raw});
+      _ ->
+        ok
+    end,
 
     %% Start the input processing server
     spawn_link(fun stop_on_input/0),
