@@ -49,7 +49,8 @@
          record_name_dirty_access_disc_only/1,
          record_name_dirty_access_xets/1,
          change_table_copy_type_node_down_allowed/1,
-         change_table_copy_type_node_down_not_allowed/1]).
+         change_table_copy_type_node_down_not_allowed/1,
+         locks_cleanup/1]).
 
 -export([info_check/8, index_size/1]).
 
@@ -73,6 +74,7 @@ all() ->
      replica_management,
      clear_table_during_load,
      schema_availability, local_content,
+     locks_cleanup,
      {group, table_access_modifications}, replica_location,
      {group, table_sync}, user_properties, unsupp_user_props,
      {group, record_name}, {group, snmp_access},
@@ -2774,3 +2776,37 @@ verify_change_table_copy_type_node_down_not_allowed(Config, From, To) ->
     ?verify_mnesia(All, []),
     ?match({[All, All], []}, rpc:multicall(All, mnesia, table_info, [tab, From])),
     ?match({[Schema, Schema], []}, rpc:multicall(All, ets, tab2list, [schema])).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+
+locks_cleanup(suite) ->
+    [];
+locks_cleanup(Config) when is_list(Config) ->
+    All = ?acquire_nodes(2, Config),
+
+    ?match({atomic, ok}, mnesia:create_table(tab, [{ram_copies, All}])),
+
+    Work = fun(Number) ->
+                   Pid = self(),
+                   Timeout = 1,
+                   process_flag(trap_exit, true),
+                   RPid = spawn_link(fun() ->
+                                             {ok, Tref} =  timer:exit_after(Timeout, kill),
+                                             MyFun = fun(Data) ->
+                                                             mnesia:write(tab, Data, write),
+                                                             timer:cancel(Tref)
+                                                     end,
+                                             Res = mnesia:activity(transaction, MyFun,
+                                                                   [{record, Number}], mnesia_frag),
+                                             Pid ! {results, Res}
+                                     end),
+                   receive
+                       {results, Result} -> Result;
+                       {'EXIT', _, _} ->
+                           exit(RPid, timeout)
+                   end end,
+    [Work(I) || I <- lists:seq(1, 1000)],
+
+    ?match([], mnesia:system_info(held_locks)).
