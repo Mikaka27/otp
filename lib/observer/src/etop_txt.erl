@@ -23,13 +23,13 @@
 
 %%-compile(export_all).
 -export([init/1,stop/1]).
--export([do_update/4]).
+-export([do_update/4, newline/1]).
 
 -include("etop.hrl").
 -include("etop_defs.hrl").
 
 -define(DEFAULT_WIDTH, 89).
--define(ERASE_ALL, "\e[;H\e[2J\r\n").
+-define(ERASE_ALL, "\e[;H\e[2J").
 
 -record(field_widths, {cols      :: pos_integer(),
                        used_cols :: pos_integer(),
@@ -57,36 +57,47 @@ loop(Prev,Config) ->
 
 do_update(Prev,Config) ->
     Info = etop:update(Config),
-    do_update(standard_io,Info,Prev,Config).
+    {ok, Fd} = file:open("/workspaces/otp/out.txt", write),
+    do_update(Fd,Info,Prev,Config).
 
 do_update(Fd,Info,Prev,Config) ->
     {Cpu,NProcs,RQ,Clock} = loadinfo(Info,Prev),
     FieldWidths = calc_field_widths(Info#etop_info.procinfo),
-    io:fwrite(Fd, ?ERASE_ALL, []),
-    writedoubleline(Fd, FieldWidths),
+    case Config#opts.shell_mode of
+        cooked ->
+            io:fwrite(Fd, newline(Config), []);
+        raw ->
+            io:fwrite(Fd, ?ERASE_ALL ++ newline(Config), [])
+    end,
+    writedoubleline(Fd, FieldWidths, Config),
     case Info#etop_info.memi of
 	undefined ->
-	    io:fwrite(Fd, " ~-72w~10s\r\n"
-		      " Load:  cpu  ~8w\r\n"
-		      "        procs~8w\r\n"
-		      "        runq ~8w\r\n",
+	    io:fwrite(Fd, " ~-72w~10s" ++ newline(Config) ++
+		      " Load:  cpu  ~8w" ++ newline(Config) ++
+		      "        procs~8w" ++ newline(Config) ++
+		      "        runq ~8w" ++ newline(Config),
 		      [Config#opts.node,Clock,
 		       Cpu,NProcs,RQ]);
 	Memi ->
 	    [Tot,Procs,Atom,Bin,Code,Ets] = 
 		meminfo(Memi, [total,processes,atom,binary,code,ets]),
-	    io:fwrite(Fd, ?SYSFORM,
-		      [Config#opts.node,Clock,
-		       Cpu,Tot,Bin,
-		       NProcs,Procs,Code,
-		       RQ,Atom,Ets])
+        Opts = [Config#opts.node,Clock,
+                Cpu,Tot,Bin,
+                NProcs,Procs,Code,
+                RQ,Atom,Ets],
+        case Config#opts.shell_mode of
+            cooked ->
+                io:fwrite(Fd, ?SYSFORM_COOKED, Opts);
+            raw ->
+                io:fwrite(Fd, ?SYSFORM_RAW, Opts)
+        end
     end,
-    io:fwrite(Fd, "\r\n", []),
-    writepinfo_header(Fd, FieldWidths),
-    writesingleline(Fd, FieldWidths),
-    writepinfo(Fd, Info#etop_info.procinfo, modifier(Fd), FieldWidths),
-    writedoubleline(Fd, FieldWidths),
-    io:fwrite(Fd, "\r\nPress 'q' to stop etop.\r\n", []),
+    io:fwrite(Fd, newline(Config), []),
+    writepinfo_header(Fd, FieldWidths, Config),
+    writesingleline(Fd, FieldWidths, Config),
+    writepinfo(Fd, Info#etop_info.procinfo, modifier(Fd), FieldWidths, Config),
+    writedoubleline(Fd, FieldWidths, Config),
+    io:fwrite(Fd, newline(Config) ++ "Press 'q' to stop etop." ++ newline(Config), []),
     Info.
 
 
@@ -178,7 +189,7 @@ get_width(N, ProcInfoL, ColsLeft) ->
 
 
 writepinfo_header(Fd, #field_widths{init_func = InitFunc, reds = Reds,
-                                    mem = Mem, msgq = MsgQ}) ->
+                                    mem = Mem, msgq = MsgQ}, Config) ->
     %% Add spaces between variable width columns.
     Header =
         "Pid            Name or Initial Func"
@@ -189,15 +200,15 @@ writepinfo_header(Fd, #field_widths{init_func = InitFunc, reds = Reds,
         ++ lists:duplicate(max(Mem - 5, 3), $\s) ++
         "Memory"
         ++ lists:duplicate(max(MsgQ - 3, 5), $\s) ++
-        "MsgQ Current Function\r\n",
+        "MsgQ Current Function" ++ newline(Config),
 
     io:fwrite(Fd, Header, []).
 
-writesingleline(Fd, FieldWidths) -> writedupline(Fd, $-, FieldWidths).
-writedoubleline(Fd, FieldWidths) -> writedupline(Fd, $=, FieldWidths).
+writesingleline(Fd, FieldWidths, Config) -> writedupline(Fd, $-, FieldWidths, Config).
+writedoubleline(Fd, FieldWidths, Config) -> writedupline(Fd, $=, FieldWidths, Config).
 
-writedupline(Fd, Char, #field_widths{used_cols = UsedCols}) ->
-    Line = lists:duplicate(UsedCols, Char) ++ "\r\n",
+writedupline(Fd, Char, #field_widths{used_cols = UsedCols}, Config) ->
+    Line = lists:duplicate(UsedCols, Char) ++ newline(Config),
     io:fwrite(Fd, Line, []).
 
 writepinfo(Fd,[#etop_proc_info{pid=Pid,
@@ -208,24 +219,24 @@ writepinfo(Fd,[#etop_proc_info{pid=Pid,
 			       cf=MFA,
 			       mq=MQ}
 	       |T],
-           Modifier, FieldWidths) ->
-    io:fwrite(Fd,proc_format(Modifier, FieldWidths),
+           Modifier, FieldWidths, Config) ->
+    io:fwrite(Fd,proc_format(Modifier, FieldWidths, Config),
               [Pid,to_string(Name,Modifier),Time,Reds,Mem,MQ,
                to_string(MFA,Modifier)]),
-    writepinfo(Fd,T,Modifier, FieldWidths);
-writepinfo(_Fd,[],_,_) ->
+    writepinfo(Fd,T,Modifier, FieldWidths, Config);
+writepinfo(_Fd,[],_,_,_) ->
     ok.
 
 proc_format(Modifier, #field_widths{init_func = InitFunc, reds = Reds,
                                     mem = Mem, msgq = MsgQ,
-                                    curr_func = CurrFunc}) ->
+                                    curr_func = CurrFunc}, Config) ->
     "~-15w"
     "~-" ++ i2l(InitFunc) ++ Modifier ++ "s"
     "~8w"
     "~" ++ i2l(Reds) ++ "w "
     "~" ++ i2l(Mem) ++"w "
     "~" ++ i2l(MsgQ) ++ "w "
-    "~-" ++ i2l(CurrFunc) ++ Modifier ++ "s\r\n".
+    "~-" ++ i2l(CurrFunc) ++ Modifier ++ "s" ++ newline(Config).
 
 to_string(Other,_Modifier) when is_binary(Other) ->
     Other;
@@ -249,4 +260,9 @@ encoding(Device) ->
         _ ->
             latin1
     end.
+
+newline(#opts{shell_mode = cooked}) ->
+    "~n";
+newline(#opts{shell_mode = raw}) ->
+    "\r\n".
 

@@ -227,21 +227,21 @@ start(Opts) ->
     Config4 = Config3#opts{accum_tab=AccumTab},
 
     %% Switch shell to raw mode
-    case shell:whereis() of
+    Config5 = case shell:whereis() of
       undefined ->
-        ok = shell:start_interactive({noshell, raw});
+        ok = shell:start_interactive({noshell, raw}),
+        Config4#opts{shell_mode = raw};
       _ ->
-        ok
+        Config4
     end,
 
-    %% Start the input processing server
     spawn_link(fun stop_on_input/0),
 
     %% Start the output server
-    Out = spawn_link(Config4#opts.out_mod, init, [Config4]),
-    Config5 = Config4#opts{out_proc = Out},       
+    Out = spawn_link(Config5#opts.out_mod, init, [Config5]),
+    Config6 = Config5#opts{out_proc = Out},       
     
-    init_data_handler(Config5),
+    init_data_handler(Config6),
     ok.
 
 stop_on_input() ->
@@ -251,15 +251,20 @@ stop_on_input() ->
 stop_on_input_loop() ->
     case io:get_chars("", 10) of
         {error, Reason} ->
+            file:write_file("/workspaces/otp/dupa.txt", io_lib:fwrite("Got error, reason: ~p~n", [Reason]), [append]),
             stop(),
             io:fwrite("Cannot get user's input, reason: ~p\r\n", [Reason]);
         eof ->
+            file:write_file("/workspaces/otp/dupa.txt", io_lib:fwrite("Got eof~n", []), [append]),
             ok;
         Input ->
+            file:write_file("/workspaces/otp/dupa.txt", io_lib:fwrite("Got input: ~p, result: ", [Input]), [append]),
             case string:find(Input, "q") of
                 nomatch ->
+                    file:write_file("/workspaces/otp/dupa.txt", io_lib:fwrite("nomatch~n", []), [append]),
                     stop_on_input_loop();
                 _ ->
+                    file:write_file("/workspaces/otp/dupa.txt", io_lib:fwrite("match~n", []), [append]),
                     stop()
             end
     end.
