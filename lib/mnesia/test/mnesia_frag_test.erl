@@ -30,7 +30,7 @@
 
 -export([nice_single/1, nice_multi/1, nice_access/1, iter_access/1,
          consistency/1, evil_create/1, evil_delete/1, evil_change/1, evil_combine/1,
-         evil_loop/1, evil_delete_db_node/1]).
+         evil_loop/1, evil_delete_db_node/1, evil_kill_proc_in_transaction/1]).
 
 
 -export([frag_dist/1]).
@@ -58,7 +58,7 @@ groups() ->
       [nice_single, nice_multi, nice_access, iter_access]},
      {evil, [],
       [evil_create, evil_delete, evil_change, evil_combine,
-       evil_loop, evil_delete_db_node]}].
+       evil_loop, evil_delete_db_node, evil_kill_proc_in_transaction]}].
 
 init_per_group(_GroupName, Config) ->
     Config.
@@ -835,6 +835,67 @@ evil_delete_db_node(Config) when is_list(Config) ->
     ?match([Local], GetPool(ExtraTab)),
      
     ?verify_mnesia([Local], []).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+evil_kill_proc_in_transaction(doc) ->
+    ["Kill processes in transaction and verify locks are not leaking"];
+evil_kill_proc_in_transaction(suite) -> [];
+evil_kill_proc_in_transaction(Config) when is_list(Config) ->
+    [N1, _N2, N3] = All = ?acquire_nodes(3, Config),
+
+    Id = 5000,
+    RecName = rec,
+    ExpectedRec = {RecName, Id, 0},
+
+    Tab = tab,
+    FragProps = [{n_fragments, length(All)}, {node_pool, All}],
+    Opts = [{record_name, RecName}, {frag_properties, FragProps}],
+    ?match({atomic, ok}, mnesia:create_table(Tab, Opts)),
+
+    NumRecords = 10000,
+    Expected1 = lists:duplicate(NumRecords, ok),
+    ?match(Expected1, mnesia:activity(transaction, fun() ->
+        [mnesia:write(Tab, {RecName, I, 0}, write) || I <- lists:seq(1, NumRecords)]
+    end, [], mnesia_frag)),
+
+    Lock = fun() ->
+        [ExpectedRec] =
+        mnesia:activity(transaction, fun() -> mnesia:read(Tab, Id, write) end, [], mnesia_frag)
+    end,
+
+    Expected2 = lists:duplicate(length(All) - 1, {ok, [ExpectedRec]}),
+    LockAndTellOthersToLock = fun(Parent) ->
+        erlang:send_after(1, Parent, timeout),
+        Expected2 = mnesia:activity(transaction, fun() ->
+            mnesia:read(Tab, Id, write),
+            erpc:multicall(All -- [node()], Lock)
+        end)
+    end,
+
+    Work = fun() ->
+        process_flag(trap_exit, true),
+        Pid = self(),
+
+        RPid = spawn_link(fun() -> LockAndTellOthersToLock(Pid) end),
+        receive
+            timeout ->
+                exit(RPid, kill),
+                ok;
+            {'EXIT', _, Reason} when Reason == killed; Reason == normal ->
+                ok;
+            Other ->
+                ct:fail("Unexpected message received: ~p~n", [Other])
+        end
+    end,
+
+    NumWork = 10000,
+    DoWork = fun() -> [Work() || _C <- lists:seq(1, NumWork)] end,
+
+    Expected3 = lists:duplicate(NumWork, ok),
+    ?match([{ok, Expected3}, {ok, Expected3}], erpc:multicall([N1, N3], DoWork)),
+
+    Expected4 = lists:duplicate(length(All), {ok, []}),
+    ?match(Expected4, erpc:multicall(All, fun() -> mnesia:system_info(held_locks) end)).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Misc convenient helpers
