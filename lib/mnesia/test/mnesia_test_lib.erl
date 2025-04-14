@@ -222,7 +222,7 @@ default_config() ->
     [{nodes, default_nodes()}].
 
 default_nodes() ->
-    mk_nodes(3, []).
+    mk_nodes(4, []).
 
 mk_nodes(0, Nodes) ->
     Nodes;
