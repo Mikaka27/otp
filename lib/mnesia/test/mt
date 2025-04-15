@@ -33,7 +33,6 @@ args=${1+"$@"}
 erlcmd="erl -sname a $p $args -mnesia_test_timeout"
 erlcmd1="erl -sname a1 $p $args"
 erlcmd2="erl -sname a2 $p $args"
-erlcmd3="erl -sname a3 $p $args"
 
 if test z"$MT_TERM" = z ; then
     MT_TERM=xterm
@@ -44,7 +43,6 @@ case $MT_TERM in
 	geom0="-geometry 142x40+0+0"
 	geom1="-geometry 70x20+0+550"
 	geom2="-geometry 70x20+480+550"
-	geom3="-geometry 70x20+480+550"
 	title="-T"
 	exec="-e"
 	;;
@@ -52,7 +50,6 @@ case $MT_TERM in
 	geom0="--geometry 142x40+0+0"
 	geom1="--geometry 70x20+0+740"
 	geom2="--geometry 70x20+700+740"
-	geom3="--geometry 70x20+700+740"
 	title="--title"
 	exec="--hide-menubar --"
 	;;
@@ -60,7 +57,6 @@ case $MT_TERM in
 	geom0="-geometry 142x40+0+0"
 	geom1="-geometry 70x20+0+680"
 	geom2="-geometry 70x20+630+680"
-	geom3="-geometry 70x20+630+680"
 	title="-title"
 	exec="-e"
 esac
@@ -80,7 +76,6 @@ $MT_TERM $geom0 $title a $exec script -c "$erlcmd" -f $log &
 
 $MT_TERM $geom1 $title a1 $exec $erlcmd1 &
 $MT_TERM $geom2 $title a2 $exec $erlcmd2 &
-$MT_TERM $geom3 $title a3 $exec $erlcmd3 &
 
 echo "Give the following command in order to see the outcome from node a@$h"":"
 echo ""

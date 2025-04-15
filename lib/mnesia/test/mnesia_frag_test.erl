@@ -842,7 +842,7 @@ evil_kill_proc_in_transaction(doc) ->
     ["Kill processes in transaction and verify locks are not leaking"];
 evil_kill_proc_in_transaction(suite) -> [];
 evil_kill_proc_in_transaction(Config) when is_list(Config) ->
-    [N1, _N2, N3, _N4] = All = ?acquire_nodes(4, Config),
+    [N1, _N2, N3] = All = ?acquire_nodes(3, Config),
 
     Id = 5000,
     RecName = rec,
