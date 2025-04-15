@@ -862,8 +862,7 @@ evil_kill_proc_in_transaction(Config) when is_list(Config) ->
         {atomic, ok} =
         mnesia:activity(transaction, fun() ->
             io:fwrite("Lock: Pid: ~p, Node: ~p, State: ~p~n", [pid_to_list(self()), node(), get(mnesia_activity_state)]),
-            [{RecName, Id, Num}] = mnesia:read(Tab, Id, write),
-            mnesia:write(Tab, {RecName, Id, Num + 1}, write)
+            [{RecName, Id, _Num}] = mnesia:read(Tab, Id, write)
         end, [], mnesia_frag)
     end,
 
