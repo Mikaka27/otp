@@ -58,7 +58,7 @@ DATA = \
 	diameter_codec_SUITE_data/send.dia \
 	diameter_codec_SUITE_data/recv.dia \
 	diameter_codec_SUITE_data/diameter_test_unknown.erl \
-	diameter_codec_SUITE_data/one.dia \
-	diameter_codec_SUITE_data/two.dia \
-	diameter_codec_SUITE_data/three.dia \
+	diameter_codec_SUITE_data/a.dia \
+	diameter_codec_SUITE_data/b.dia \
+	diameter_codec_SUITE_data/c.dia \
 	diameter_codec_SUITE_data/diameter_test_inherit.erl
