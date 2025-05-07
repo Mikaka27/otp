@@ -480,12 +480,12 @@ inherit(Priv, Data) ->
         "~n   Priv dir: ~p"
         "~n   Data dir: ~p"
         "~n", [?FUNCTION_NAME, Priv, Data]),
-    ok = make(Data, "one.dia", Priv),
-    ok = make(Data, "two.dia", Priv),
-    ok = make(Data, "three.dia", Priv),
-    {ok, _, _} = compile(Priv, "diameter_test_one.erl"),
-    {ok, _, _} = compile(Priv, "diameter_test_two.erl"),
-    {ok, _, _} = compile(Priv, "diameter_test_three.erl"),
+    ok = make(Data, "a.dia", Priv),
+    {ok, _, _} = compile(Priv, "diameter_a.erl"),
+    ok = make(Data, "b.dia", Priv),
+    {ok, _, _} = compile(Priv, "diameter_b.erl"),
+    ok = make(Data, "c.dia", Priv),
+    {ok, _, _} = compile(Priv, "diameter_c.erl"),
     {ok, _, _} = compile(Priv,
                             filename:join([Data, "diameter_test_inherit.erl"]),
                             [{i, Priv}]),
