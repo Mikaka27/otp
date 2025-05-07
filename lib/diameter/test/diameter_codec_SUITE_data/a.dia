@@ -21,15 +21,10 @@
 ;;
 
 @id 18
-@name   diameter_two
-@prefix two
+@name   diameter_a
+@prefix a
 
-@inherits diameter_one
+@avp_types
 
-@messages
-
-      YY ::= < Diameter Header: 123, REQ >
-              { Origin-Host }
-              { Origin-Realm }
-              [ XXX ]
-              [ YYY ]
+   XXX    111    Unsigned32    M
+   YYY    222    Unsigned32    -

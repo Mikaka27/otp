@@ -21,15 +21,7 @@
 ;;
 
 @id 18
-@name   diameter_three
-@prefix three
+@name   diameter_b
+@prefix b
 
-@inherits diameter_two
-
-@messages
-
-      ZZ ::= < Diameter Header: 123, REQ >
-              { Origin-Host }
-              { Origin-Realm }
-              [ XXX ]
-              [ YYY ]
+@inherits diameter_a

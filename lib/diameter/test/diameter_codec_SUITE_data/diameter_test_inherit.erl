@@ -3,7 +3,7 @@
 %%
 %% SPDX-License-Identifier: Apache-2.0
 %%
-%% Copyright Ericsson AB 2010-2025. All Rights Reserved.
+%% Copyright Ericsson AB 2025. All Rights Reserved.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -20,63 +20,37 @@
 %% %CopyrightEnd%
 %%
 
--module(diameter_test_unknown).
+-module(diameter_test_inherit).
 
 -compile(export_all).
 
-%%
-%% Test reception of unknown AVP's.
-%%
-
 -include_lib("diameter/include/diameter.hrl").
--include("diameter_test_1.hrl").
--include("diameter_test_2.hrl").
--include("diameter_test_3.hrl").
-
--define(HOST,  "test.erlang.org").
--define(REALM, "erlang.org").
-
-%% Patterns to match decoded AVP's.
--define(MANDATORY_XXX,     #diameter_avp{code = 111}).
--define(NOT_MANDATORY_YYY, #diameter_avp{code = 222}).
-
-%% Ensure that an unknown AVP with an M flag is regarded as an error
-%% while one without an M flag is returned as 'AVP'.
+-include("diameter_a.hrl").
+-include("diameter_b.hrl").
+-include("diameter_c.hrl").
 
 run() ->
     H = #diameter_header{version = 1,
                          end_to_end_id = 1,
                          hop_by_hop_id = 1},
-    Vs = [{'Origin-Host', ?HOST},
-          {'Origin-Realm', ?REALM},
-          {'XXX', [0]},
+    Vs = [{'XXX', [0]},
           {'YYY', [1]}],
     Pkt = #diameter_packet{header = H,
                            msg = Vs},
 
     [] = diameter_util:run([{?MODULE, [run, M, enc(M, Pkt)]}
-                            || M <- ['ZZ']]).
+                            || M <- ['ZR']]).
 
 enc(M, #diameter_packet{msg = Vs} = P) ->
-    diameter_codec:encode(diameter_test_three,
+    diameter_codec:encode(diameter_c,
                           P#diameter_packet{msg = [M|Vs]}).
 
 run(M, Pkt) ->
-    dec(M, diameter_codec:decode(diameter_test_three, opts(M), Pkt)).
-%% Note that the recv dictionary defines neither XXX nor YYY.
+    dec(M, diameter_codec:decode(diameter_c, opts(M), Pkt)).
 
-% dec('ZZ', #diameter_packet
-%            {msg = #three_ZZ{'Origin-Host'  = ?HOST,
-%                            'Origin-Realm' = ?REALM,
-%                            'AVP' = [?NOT_MANDATORY_YYY]},
-%             errors = [{5001, ?MANDATORY_XXX}]}) ->
-%     ok;
-
-dec('ZZ', #diameter_packet
-           {msg = #three_ZZ{'Origin-Host'  = ?HOST,
-                           'Origin-Realm' = ?REALM},
-            errors = [{5001, ?MANDATORY_XXX},
-                      {5008, ?NOT_MANDATORY_YYY}]}) ->
+dec('ZR', #diameter_packet
+    {msg = #c_ZR{'XXX' = [0],
+                 'YYY' = [1]}}) ->
     ok.
 
 opts(Mod) ->
