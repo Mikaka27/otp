@@ -21,24 +21,22 @@
 ;;
 
 @id 18
-@name   diameter_one
-@prefix one
+@name   diameter_c
+@prefix c
 
-@inherits diameter_gen_base_rfc6733
-
-    Origin-Host
-    Origin-Realm
-    Result-Code
-
-@avp_types
-
-   XXX    111    Unsigned32    M
-   YYY    222    Unsigned32    -
+;; Uncomment to make unfixed version work
+;; @inherits diameter_gen_base_rfc6733
+;; 
+;;     Result-Code
+;; 
+;; @inherits diameter_a
+@inherits diameter_b
 
 @messages
 
-      XX ::= < Diameter Header: 123, REQ >
-              { Origin-Host }
-              { Origin-Realm }
+      ZR ::= < Diameter Header: 123, REQ >
               [ XXX ]
               [ YYY ]
+
+      ZA ::= < Diameter Header: 123 >
+              { Result-Code }
