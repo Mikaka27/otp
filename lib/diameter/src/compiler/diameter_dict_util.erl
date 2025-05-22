@@ -391,6 +391,7 @@ do_parse(File, Opts) ->
     Bin  = do([fun read/1, File], read),
     Toks = do([fun diameter_dict_scanner:scan/1, Bin], scan),
     Tree = do([fun diameter_dict_parser:parse/1, Toks], parse),
+    % file:write_file("/workspaces/otp/out.txt", io_lib:fwrite("File: ~p~n~p~n======================================================================================~n~n", [File, Tree]), [append]),
     make_dict(Tree, Opts).
 
 do([F|A], E) ->
@@ -408,6 +409,7 @@ read(File) ->
 
 make_dict(Parse, Opts) ->
     Dict = pass3(pass2(pass1(reset(make_dict(Parse), Opts))), Opts),
+    file:write_file("/workspaces/otp/out4.txt", io_lib:fwrite("make_dict, Dict: ~p~n", [make_orddict(Dict)]), [append]),
     ok = examine(Dict),
     make_orddict(Dict).
 
@@ -1140,7 +1142,7 @@ avp_vendor_id(Flags, Name, Line, Dict) ->
 %% Import AVPs.
 
 pass3(Dict, Opts) ->
-    import_enums(import_groups(import_avps(insert_codes(Dict), Opts))).
+    import_enums(import_groups(import_avps(import_inherits(insert_codes(Dict), Opts)))).
 
 %% insert_codes/1
 %%
@@ -1168,19 +1170,37 @@ mk_code(_Code, [[Line, _Name, IsReq]]) ->
                               Line,
                               choose(IsReq, "answer", "request")]).
 
+import_inherits(Dict, Opts) ->
+    code:add_pathsa([D || {include, D} <- Opts]),
+
+    Inherits = find(inherits, Dict),
+    NestedInherits = lists:map(fun convert_to_nested_inherit/1, find_nested_key(inherits, Dict)),
+    file:write_file("/workspaces/otp/out5.txt", io_lib:fwrite("Inherits: ~p~nNestedInherits: ~p~nCombined: ~p~n", [Inherits, NestedInherits, Inherits ++ NestedInherits]), [append]),
+    dict:store(inherits, Inherits ++ NestedInherits, Dict).
+
 %% import_avps/2
 
-import_avps(Dict, Opts) ->
-    Import = inherit(Dict, Opts),
+import_avps(Dict) ->
+    Import = inherit(Dict),
+                                                % file:write_file("/workspaces/otp/out.txt", io_lib:fwrite("~p~nDict: ~p~nOpts: ~p~nImport: ~p~n~n~n", [?FUNCTION_NAME, Dict, Opts, Import]), [append]),
     report(imported, Import),
+
+    % NestedImports = find_nested_key(import_avps, Dict),
 
     %% examine/1 tests that all referenced AVP's are either defined
     %% or imported.
 
-    dict:store(import_avps,
-               lists:map(fun({M, _, As}) -> {M, [A || {_,A} <- As]} end,
-                         lists:reverse(Import)),
-               foldl(fun explode_imports/2, Dict, Import)).
+    ImportValue = lists:map(fun({M, _, As}) -> {M, [A || {_,A} <- As]} end,
+                            lists:reverse(Import)),
+
+    % file:write_file("/workspaces/otp/out2.txt", io_lib:fwrite("Dict: ~p~nImports: ~p~n", [Dict, ImportValue ++ NestedImports]), [append]),
+    % file:write_file("/workspaces/otp/out2.txt", io_lib:fwrite("Import: ~p~nImportValue: ~p~nNestedImports: ~p~n", [Import, ImportValue, NestedImports]), [append]),
+
+    Dict2 = dict:store(import_avps,
+               ImportValue,
+               foldl(fun explode_imports/2, Dict, Import)),
+    file:write_file("/workspaces/otp/out3.txt", io_lib:fwrite("Dict2: ~p~n", [dict:to_list(Dict2)]), [append]),
+    Dict2.
 
 explode_imports({Mod, Line, Avps}, Dict) ->
     foldl([fun xi/4, Mod, Line], Dict, Avps).
@@ -1230,8 +1250,9 @@ import_key({Mod, Avps}, Key) ->
 %% name, Line points to the corresponding @inherit and each Avp is
 %% from Mod:dict(). Lineno is 0 if the import is implicit.
 
-inherit(Dict, Opts) ->
-    code:add_pathsa([D || {include, D} <- Opts]),
+inherit(Dict) ->
+    % code:add_pathsa([D || {include, D} <- Opts]),
+    % file:write_file("/workspaces/otp/out.txt", io_lib:fwrite("Inherits: ~p~nNestedInherits: ~p~n", [find(inherits, Dict), find_inherits(Dict)]), [append]),
     foldl(fun inherit_avps/2, [], find(inherits, Dict)).
 %% Note that the module order of the returned lists is reversed
 %% relative to @inherits.
@@ -1373,3 +1394,90 @@ eval([[F|X] | A]) ->
     eval([F | A ++ X]);
 eval([F|A]) ->
     apply(F,A).
+
+find_nested_key(Key, Dict) ->
+    case find(inherits, Dict) of
+        [] ->
+            [];
+        Inherits ->
+            lists:flatmap(fun([_Line, {_,_,M} | _Names]) ->
+                find_nested_key_in_module(Key, dict(?A(M)))
+            end, Inherits)
+    end.
+
+find_nested_key_in_module(Key, Dict) ->
+    case {proplists:get_value(inherits, Dict, []), proplists:get_value(Key, Dict, [])} of
+        {[], _} ->
+            [];
+        {Inherits, Value} ->
+            NestedValue = lists:flatmap(fun([]) ->
+                                                [];
+                                            ({M,_}) ->
+                                                find_nested_key_in_module(Key, dict(?A(M)))
+                                            end, Inherits),
+        Value ++ NestedValue
+    end.
+
+convert_to_nested_inherit({M, []}) ->
+    [0, {word, 0, M}].
+
+% find_nested_inherits(Dict) ->
+%     case find(inherits, Dict) of
+%         [] ->
+%             [];
+%         Inherits ->
+
+
+% find_nested_imports(Dict) ->
+%     case find(inherits, Dict) of
+%         [] ->
+%             [];
+%         Inherits ->
+%             Nested = lists:flatmap(fun([_Line, {_,_,M} | _Names]) ->
+%                                            find_nested_imports(dict(?A(M)), [])
+%                                    end, Inherits),
+%             Nested
+%     end.
+% find_nested_imports(List, Acc) ->
+%     case {proplists:get_value(inherits, List, []), proplists:get_value(import_avps, List, [])} of
+%         {[], _} ->
+%             Acc;
+%         {Inherits, Imports} ->
+%             Nested = lists:flatmap(fun([]) ->
+%                                            [];
+%                                       ({M,_}) ->
+%                                            find_nested_imports(dict(?A(M)), [])
+%                                    end, Inherits),
+%             Acc ++ Imports ++ Nested
+%     end.
+
+% find_inherits(Dict) ->
+%     file:write_file("/workspaces/otp/out.txt", io_lib:fwrite("Dict: ~p~n", [Dict]), [append]),
+%     case find(inherits, Dict) of
+%         [] ->
+%             file:write_file("/workspaces/otp/out.txt", io_lib:fwrite("NotFound~n~n~n", []), [append]),
+%             [];
+%         Inherits ->
+%             file:write_file("/workspaces/otp/out.txt", io_lib:fwrite("Inherits: ~p~n", [Inherits]), [append]),
+%             Nested = lists:flatmap(fun([_Line, {_,_,M} | _Names]) -> find_nested_inherits(dict(?A(M))) end, Inherits),
+%             file:write_file("/workspaces/otp/out.txt", io_lib:fwrite("Nested: ~p~n~n~n", [Nested]), [append]),
+%             lists:append(Inherits, Nested)
+%     end.
+
+% find_nested_inherits(List) ->
+%     file:write_file("/workspaces/otp/out.txt", io_lib:fwrite("List: ~p~n", [List]), [append]),
+%     case proplists:get_value(inherits, List, []) of
+%         [] ->
+%             file:write_file("/workspaces/otp/out.txt", io_lib:fwrite("NotFound~n~n~n", []), [append]),
+%             [];
+%         Inherits ->
+%             file:write_file("/workspaces/otp/out.txt", io_lib:fwrite("Inherits: ~p~n", [Inherits]), [append]),
+%             Nested = lists:flatmap(fun([]) ->
+%                                            [];
+%                                       ({M,_}) ->
+%                                            find_nested_inherits(dict(?A(M)))
+%                                    end, Inherits),
+%                                                 % Nested = lists:flatmap(fun([_Line, {_,_,M} | _Names]) -> find_nested_inherits(dict(?A(M))) end, Inherits),
+%             file:write_file("/workspaces/otp/out.txt", io_lib:fwrite("Nested: ~p~n~n~n", [Nested]), [append]),
+%             lists:append(Inherits, Nested)
+%     end.
