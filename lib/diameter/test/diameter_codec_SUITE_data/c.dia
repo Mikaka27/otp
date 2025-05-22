@@ -24,11 +24,11 @@
 @name   diameter_c
 @prefix c
 
+
+@inherits diameter_gen_base_rfc6733
+
+    Result-Code
 ;; Uncomment to make unfixed version work
-;; @inherits diameter_gen_base_rfc6733
-;; 
-;;     Result-Code
-;; 
 ;; @inherits diameter_a
 @inherits diameter_b
 
