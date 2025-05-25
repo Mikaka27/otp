@@ -21,9 +21,16 @@
 ;;
 
 @id 18
-@name   diameter_b
-@prefix b
+@name   diameter_d
+@prefix d
 
-@inherits diameter_a
+@inherits diameter_c
 
-    XXX
+@messages
+
+      ZR ::= < Diameter Header: 123, REQ >
+              [ XXX ]
+              [ YYY ]
+
+      ZA ::= < Diameter Header: 123 >
+              { Result-Code }
