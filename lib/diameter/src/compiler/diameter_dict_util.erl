@@ -1174,9 +1174,9 @@ import_inherits(Dict, Opts) ->
     code:add_pathsa([D || {include, D} <- Opts]),
 
     Inherits = find(inherits, Dict),
-    NestedInherits = lists:map(fun convert_to_nested_inherit/1, find_nested_key(inherits, Dict)),
-    file:write_file("/workspaces/otp/out5.txt", io_lib:fwrite("Inherits: ~p~nNestedInherits: ~p~nCombined: ~p~n", [Inherits, NestedInherits, Inherits ++ NestedInherits]), [append]),
-    dict:store(inherits, Inherits ++ NestedInherits, Dict).
+    AllInherits = get_all_inherits(Dict),
+    file:write_file("/workspaces/otp/out5.txt", io_lib:fwrite("Inherits: ~p~nAllInherits: ~p~n~n~n", [Inherits, AllInherits]), [append]),
+    dict:store(inherits, AllInherits, Dict).
 
 %% import_avps/2
 
@@ -1395,89 +1395,66 @@ eval([[F|X] | A]) ->
 eval([F|A]) ->
     apply(F,A).
 
-find_nested_key(Key, Dict) ->
+get_all_inherits(Dict) ->
     case find(inherits, Dict) of
         [] ->
             [];
         Inherits ->
-            lists:flatmap(fun([_Line, {_,_,M} | _Names]) ->
-                find_nested_key_in_module(Key, dict(?A(M)))
-            end, Inherits)
+            NestedInherits = lists:flatmap(fun([_Line, {_, _, Mod} | _Names]) ->
+                                  get_all_inherits_from_module(dict(?A(Mod)))
+                          end, Inherits),
+            combine_inherits(Inherits ++ NestedInherits, orddict:new())
     end.
 
-find_nested_key_in_module(Key, Dict) ->
-    case {proplists:get_value(inherits, Dict, []), proplists:get_value(Key, Dict, [])} of
-        {[], _} ->
+get_all_inherits_from_module(List) ->
+    case proplists:get_value(inherits, List, []) of
+        [] ->
             [];
-        {Inherits, Value} ->
-            NestedValue = lists:flatmap(fun([]) ->
-                                                [];
-                                            ({M,_}) ->
-                                                find_nested_key_in_module(Key, dict(?A(M)))
-                                            end, Inherits),
-        Value ++ NestedValue
+        Inherits ->
+            NestedInherits = lists:flatmap(fun([]) ->
+                                                   [];
+                                              ({Mod, _}) ->
+                                                   get_all_inherits_from_module(dict(?A(Mod)))
+                                           end, Inherits),
+            Converted = lists:map(fun(Inherit) -> convert_to_nested_inherit(Inherit) end, Inherits),
+            lists:append(Converted, NestedInherits)
     end.
 
-convert_to_nested_inherit({M, []}) ->
-    [0, {word, 0, M}].
+convert_to_nested_inherit({Mod, []}) ->
+    [0, {word, 0, Mod}];
+convert_to_nested_inherit({Mod, Names}) ->
+    [0, {word, 0, Mod} | lists:map(fun(Name) -> {word, 0, Name} end, Names)].
 
-% find_nested_inherits(Dict) ->
-%     case find(inherits, Dict) of
-%         [] ->
-%             [];
-%         Inherits ->
+combine_inherits([], Acc) ->
+    lists:reverse(Acc);
+combine_inherits([[_Line0, {_, _, Mod} | Names0] = Inherit0 | Rest], Acc) ->
+    case lists:search(fun([_Line1, {_, _, Mod1} | _Names1]) -> Mod == Mod1 end, Acc) of
+        undefined ->
+            %% Inherit to Mod is not present in Acc yet
+            NewAcc = [Inherit0 | Acc],
+            combine_inherits(Rest, NewAcc);
+        [_Line2, {_, _, Mod}] ->
+            %% Inherit to whole Mod is present in Acc, we can ignore our Inherit
+            combine_inherits(Rest, Acc);
+        [_Line2, {_, _, Mod} | _Names2] when Names0 == [] ->
+            %% Some names from Mod are already inherited, but we can replace it with whole module
+            %% Inherit
+            NewAcc = [Inherit0 | Acc],
+            combine_inherits(Rest, NewAcc);
+        [_Line2, {Token, _, Mod} | Names2] ->
+            %% Some names from Mod are already inherited, we must add our Names to the list
+            NewInherit = [0, {Token, 0, Mod} | combine_names(Names2 ++ Names1, [])],
+            NewAcc = maps:put(Mod, NewInherit, Acc),
+            combine_inherits(Rest, NewAcc)
+    end.
 
-
-% find_nested_imports(Dict) ->
-%     case find(inherits, Dict) of
-%         [] ->
-%             [];
-%         Inherits ->
-%             Nested = lists:flatmap(fun([_Line, {_,_,M} | _Names]) ->
-%                                            find_nested_imports(dict(?A(M)), [])
-%                                    end, Inherits),
-%             Nested
-%     end.
-% find_nested_imports(List, Acc) ->
-%     case {proplists:get_value(inherits, List, []), proplists:get_value(import_avps, List, [])} of
-%         {[], _} ->
-%             Acc;
-%         {Inherits, Imports} ->
-%             Nested = lists:flatmap(fun([]) ->
-%                                            [];
-%                                       ({M,_}) ->
-%                                            find_nested_imports(dict(?A(M)), [])
-%                                    end, Inherits),
-%             Acc ++ Imports ++ Nested
-%     end.
-
-% find_inherits(Dict) ->
-%     file:write_file("/workspaces/otp/out.txt", io_lib:fwrite("Dict: ~p~n", [Dict]), [append]),
-%     case find(inherits, Dict) of
-%         [] ->
-%             file:write_file("/workspaces/otp/out.txt", io_lib:fwrite("NotFound~n~n~n", []), [append]),
-%             [];
-%         Inherits ->
-%             file:write_file("/workspaces/otp/out.txt", io_lib:fwrite("Inherits: ~p~n", [Inherits]), [append]),
-%             Nested = lists:flatmap(fun([_Line, {_,_,M} | _Names]) -> find_nested_inherits(dict(?A(M))) end, Inherits),
-%             file:write_file("/workspaces/otp/out.txt", io_lib:fwrite("Nested: ~p~n~n~n", [Nested]), [append]),
-%             lists:append(Inherits, Nested)
-%     end.
-
-% find_nested_inherits(List) ->
-%     file:write_file("/workspaces/otp/out.txt", io_lib:fwrite("List: ~p~n", [List]), [append]),
-%     case proplists:get_value(inherits, List, []) of
-%         [] ->
-%             file:write_file("/workspaces/otp/out.txt", io_lib:fwrite("NotFound~n~n~n", []), [append]),
-%             [];
-%         Inherits ->
-%             file:write_file("/workspaces/otp/out.txt", io_lib:fwrite("Inherits: ~p~n", [Inherits]), [append]),
-%             Nested = lists:flatmap(fun([]) ->
-%                                            [];
-%                                       ({M,_}) ->
-%                                            find_nested_inherits(dict(?A(M)))
-%                                    end, Inherits),
-%                                                 % Nested = lists:flatmap(fun([_Line, {_,_,M} | _Names]) -> find_nested_inherits(dict(?A(M))) end, Inherits),
-%             file:write_file("/workspaces/otp/out.txt", io_lib:fwrite("Nested: ~p~n~n~n", [Nested]), [append]),
-%             lists:append(Inherits, Nested)
-%     end.
+combine_names([], Acc) ->
+    lists:reverse(Acc);
+combine_names([{_, _, Name} = Tuple | Rest], Acc) ->
+    case lists:keyfind(Name, 3, Acc) of
+        false ->
+            NewAcc = [Tuple | Acc],
+            combine_names(Rest, NewAcc);
+        _ ->
+            combine_names(Rest, Acc)
+    end.

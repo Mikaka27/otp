@@ -486,6 +486,8 @@ inherit(Priv, Data) ->
     {ok, _, _} = compile(Priv, "diameter_b.erl"),
     ok = make(Data, "c.dia", Priv),
     {ok, _, _} = compile(Priv, "diameter_c.erl"),
+    ok = make(Data, "d.dia", Priv),
+    {ok, _, _} = compile(Priv, "diameter_d.erl"),
     {ok, _, _} = compile(Priv,
                             filename:join([Data, "diameter_test_inherit.erl"]),
                             [{i, Priv}]),
