@@ -28,15 +28,8 @@
 @inherits diameter_gen_base_rfc6733
 
     Result-Code
-;; Uncomment to make unfixed version work
-;; @inherits diameter_a
+
 @inherits diameter_b
+@inherits diameter_a
 
-@messages
-
-      ZR ::= < Diameter Header: 123, REQ >
-              [ XXX ]
-              [ YYY ]
-
-      ZA ::= < Diameter Header: 123 >
-              { Result-Code }
+    YYY

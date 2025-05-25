@@ -28,6 +28,7 @@
 -include("diameter_a.hrl").
 -include("diameter_b.hrl").
 -include("diameter_c.hrl").
+-include("diameter_d.hrl").
 
 run() ->
     H = #diameter_header{version = 1,
@@ -42,14 +43,14 @@ run() ->
                             || M <- ['ZR']]).
 
 enc(M, #diameter_packet{msg = Vs} = P) ->
-    diameter_codec:encode(diameter_c,
+    diameter_codec:encode(diameter_d,
                           P#diameter_packet{msg = [M|Vs]}).
 
 run(M, Pkt) ->
-    dec(M, diameter_codec:decode(diameter_c, opts(M), Pkt)).
+    dec(M, diameter_codec:decode(diameter_d, opts(M), Pkt)).
 
 dec('ZR', #diameter_packet
-    {msg = #c_ZR{'XXX' = [0],
+    {msg = #d_ZR{'XXX' = [0],
                  'YYY' = [1]}}) ->
     ok.
 
