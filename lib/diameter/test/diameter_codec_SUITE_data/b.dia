@@ -27,3 +27,12 @@
 @inherits diameter_a
 
     XXX
+
+@avp_types
+
+    ZZZ    333    Enumerated    -
+
+@enum ZZZ
+
+    ZERO 0
+    ONE  1
