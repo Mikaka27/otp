@@ -1395,15 +1395,17 @@ eval([[F|X] | A]) ->
 eval([F|A]) ->
     apply(F,A).
 
+%% ===========================================================================
+
 get_all_inherits(Dict) ->
     case find(inherits, Dict) of
         [] ->
             [];
         Inherits ->
             NestedInherits = lists:flatmap(fun([_Line, {_, _, Mod} | _Names]) ->
-                                  get_all_inherits_from_module(dict(?A(Mod)))
-                          end, Inherits),
-            combine_inherits(Inherits ++ NestedInherits, orddict:new())
+                                                   get_all_inherits_from_module(dict(?A(Mod)))
+                                           end, Inherits),
+            combine_inherits(lists:enumerate(Inherits ++ NestedInherits), maps:new())
     end.
 
 get_all_inherits_from_module(List) ->
@@ -1426,24 +1428,26 @@ convert_to_nested_inherit({Mod, Names}) ->
     [0, {word, 0, Mod} | lists:map(fun(Name) -> {word, 0, Name} end, Names)].
 
 combine_inherits([], Acc) ->
-    lists:reverse(Acc);
-combine_inherits([[_Line0, {_, _, Mod} | Names0] = Inherit0 | Rest], Acc) ->
-    case lists:search(fun([_Line1, {_, _, Mod1} | _Names1]) -> Mod == Mod1 end, Acc) of
+    Values = maps:values(Acc),
+    Sorted = lists:sort(Values),
+    lists:map(fun({_Index, Inherit}) -> Inherit end, Sorted);
+combine_inherits([{_Index0, [_Line0, {_, _, Mod} | Names0]} = Inherit0 | Rest], Acc) ->
+    case maps:get(Mod, Acc, undefined) of
         undefined ->
             %% Inherit to Mod is not present in Acc yet
-            NewAcc = [Inherit0 | Acc],
+            NewAcc = maps:put(Mod, Inherit0, Acc),
             combine_inherits(Rest, NewAcc);
-        [_Line2, {_, _, Mod}] ->
+        {_Index1, [_Line2, {_, _, Mod}]} ->
             %% Inherit to whole Mod is present in Acc, we can ignore our Inherit
             combine_inherits(Rest, Acc);
-        [_Line2, {_, _, Mod} | _Names2] when Names0 == [] ->
+        {_Index1, [_Line2, {_, _, Mod} | _Names1]} when Names0 == [] ->
             %% Some names from Mod are already inherited, but we can replace it with whole module
             %% Inherit
-            NewAcc = [Inherit0 | Acc],
+            NewAcc = maps:put(Mod, Inherit0, Acc),
             combine_inherits(Rest, NewAcc);
-        [_Line2, {Token, _, Mod} | Names2] ->
+        {Index1, [_Line2, {Token, _, Mod} | Names1]} ->
             %% Some names from Mod are already inherited, we must add our Names to the list
-            NewInherit = [0, {Token, 0, Mod} | combine_names(Names2 ++ Names1, [])],
+            NewInherit = {Index1, [0, {Token, 0, Mod} | combine_names(Names1 ++ Names0, [])]},
             NewAcc = maps:put(Mod, NewInherit, Acc),
             combine_inherits(Rest, NewAcc)
     end.
