@@ -33,3 +33,7 @@
 @inherits diameter_a
 
     YYY
+
+@enum ZZZ
+
+    THREE 3
