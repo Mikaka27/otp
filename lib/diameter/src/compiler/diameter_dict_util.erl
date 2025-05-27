@@ -409,7 +409,7 @@ read(File) ->
 
 make_dict(Parse, Opts) ->
     Dict = pass3(pass2(pass1(reset(make_dict(Parse), Opts))), Opts),
-    file:write_file("/workspaces/otp/out4.txt", io_lib:fwrite("make_dict, Dict: ~p~n", [make_orddict(Dict)]), [append]),
+    % file:write_file("/workspaces/otp/out4.txt", io_lib:fwrite("make_dict, Dict: ~p~n", [make_orddict(Dict)]), [append]),
     ok = examine(Dict),
     make_orddict(Dict).
 
@@ -1173,9 +1173,9 @@ mk_code(_Code, [[Line, _Name, IsReq]]) ->
 import_inherits(Dict, Opts) ->
     code:add_pathsa([D || {include, D} <- Opts]),
 
-    Inherits = find(inherits, Dict),
+    % Inherits = find(inherits, Dict),
     AllInherits = get_all_inherits(Dict),
-    file:write_file("/workspaces/otp/out5.txt", io_lib:fwrite("Inherits: ~p~nAllInherits: ~p~n~n~n", [Inherits, AllInherits]), [append]),
+    % file:write_file("/workspaces/otp/out5.txt", io_lib:fwrite("Inherits: ~p~nAllInherits: ~p~n~n~n", [Inherits, AllInherits]), [append]),
     dict:store(inherits, AllInherits, Dict).
 
 %% import_avps/2
@@ -1199,7 +1199,7 @@ import_avps(Dict) ->
     Dict2 = dict:store(import_avps,
                ImportValue,
                foldl(fun explode_imports/2, Dict, Import)),
-    file:write_file("/workspaces/otp/out3.txt", io_lib:fwrite("Dict2: ~p~n", [dict:to_list(Dict2)]), [append]),
+    % file:write_file("/workspaces/otp/out3.txt", io_lib:fwrite("Dict2: ~p~n", [dict:to_list(Dict2)]), [append]),
     Dict2.
 
 explode_imports({Mod, Line, Avps}, Dict) ->
