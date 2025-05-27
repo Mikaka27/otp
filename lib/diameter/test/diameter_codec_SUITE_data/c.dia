@@ -32,8 +32,8 @@
 @inherits diameter_b
 @inherits diameter_a
 
-    YYY
+    BBB
 
-@enum ZZZ
+@enum CCC
 
     THREE 3
