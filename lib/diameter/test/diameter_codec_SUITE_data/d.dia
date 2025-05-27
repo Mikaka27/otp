@@ -26,15 +26,15 @@
 
 @inherits diameter_c
 
-@enum ZZZ
+@enum CCC
     FOUR 4
 
 @messages
 
     ZR ::= < Diameter Header: 123, REQ >
-            [ XXX ]
-            [ YYY ]
-            [ ZZZ ]
+            [ AAA ]
+            [ BBB ]
+            [ CCC ]
 
     ZA ::= < Diameter Header: 123 >
             { Result-Code }
