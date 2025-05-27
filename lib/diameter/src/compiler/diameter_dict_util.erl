@@ -1137,7 +1137,7 @@ avp_vendor_id(Flags, Name, Line, Dict) ->
 %% Import AVPs.
 
 pass3(Dict, Opts) ->
-    import_enums(import_groups(import_avps(insert_codes(Dict), Opts))).
+    import_enums(import_groups(import_avps(import_inherits(insert_codes(Dict), Opts)))).
 
 %% insert_codes/1
 %%
@@ -1165,10 +1165,18 @@ mk_code(_Code, [[Line, _Name, IsReq]]) ->
                               Line,
                               choose(IsReq, "answer", "request")]).
 
-%% import_avps/2
+import_inherits(Dict, Opts) ->
+    code:add_pathsa([D || {include, D} <- Opts]),
 
-import_avps(Dict, Opts) ->
-    Import = inherit(Dict, Opts),
+    % Inherits = find(inherits, Dict),
+    _AllInherits = get_all_inherits(Dict),
+    % dict:store(inherits, AllInherits, Dict).
+    Dict.
+
+%% import_avps/1
+
+import_avps(Dict) ->
+    Import = inherit(Dict),
     report(imported, Import),
 
     %% examine/1 tests that all referenced AVP's are either defined
@@ -1221,14 +1229,13 @@ import_key({Mod, Avps}, Key) ->
     end.
 
 %% ------------------------------------------------------------------------
-%% inherit/2
+%% inherit/1
 %%
 %% Return a {Mod, Line, [{Lineno, Avp}]} list, where Mod is a module
 %% name, Line points to the corresponding @inherit and each Avp is
 %% from Mod:dict(). Lineno is 0 if the import is implicit.
 
-inherit(Dict, Opts) ->
-    code:add_pathsa([D || {include, D} <- Opts]),
+inherit(Dict) ->
     foldl(fun inherit_avps/2, [], find(inherits, Dict)).
 %% Note that the module order of the returned lists is reversed
 %% relative to @inherits.
@@ -1370,3 +1377,71 @@ eval([[F|X] | A]) ->
     eval([F | A ++ X]);
 eval([F|A]) ->
     apply(F,A).
+
+%% ===========================================================================
+
+get_all_inherits(Dict) ->
+    case find(inherits, Dict) of
+        [] ->
+            [];
+        Inherits ->
+            NestedInherits = lists:flatmap(fun([_Line, {_, _, Mod} | _Names]) ->
+                                                   get_all_inherits_from_module(dict(?A(Mod)))
+                                           end, Inherits),
+            combine_inherits(lists:enumerate(Inherits ++ NestedInherits), maps:new())
+    end.
+
+get_all_inherits_from_module(List) ->
+    case proplists:get_value(inherits, List, []) of
+        [] ->
+            [];
+        Inherits ->
+            NestedInherits = lists:flatmap(fun([]) ->
+                                                   [];
+                                              ({Mod, _}) ->
+                                                   get_all_inherits_from_module(dict(?A(Mod)))
+                                           end, Inherits),
+            Converted = lists:map(fun(Inherit) -> convert_to_nested_inherit(Inherit) end, Inherits),
+            lists:append(Converted, NestedInherits)
+    end.
+
+convert_to_nested_inherit({Mod, []}) ->
+    [0, {word, 0, Mod}];
+convert_to_nested_inherit({Mod, Names}) ->
+    [0, {word, 0, Mod} | lists:map(fun(Name) -> {word, 0, Name} end, Names)].
+
+combine_inherits([], Acc) ->
+    Values = maps:values(Acc),
+    Sorted = lists:sort(Values),
+    lists:map(fun({_Index, Inherit}) -> Inherit end, Sorted);
+combine_inherits([{_Index0, [_Line0, {_, _, Mod} | Names0]} = Inherit0 | Rest], Acc) ->
+    case maps:get(Mod, Acc, undefined) of
+        undefined ->
+            %% Inherit to Mod is not present in Acc yet
+            NewAcc = maps:put(Mod, Inherit0, Acc),
+            combine_inherits(Rest, NewAcc);
+        {_Index1, [_Line2, {_, _, Mod}]} ->
+            %% Inherit to whole Mod is present in Acc, we can ignore our Inherit
+            combine_inherits(Rest, Acc);
+        {_Index1, [_Line2, {_, _, Mod} | _Names1]} when Names0 == [] ->
+            %% Some names from Mod are already inherited, but we can replace it with whole module
+            %% Inherit
+            NewAcc = maps:put(Mod, Inherit0, Acc),
+            combine_inherits(Rest, NewAcc);
+        {Index1, [_Line2, {Token, _, Mod} | Names1]} ->
+            %% Some names from Mod are already inherited, we must add our Names to the list
+            NewInherit = {Index1, [0, {Token, 0, Mod} | combine_names(Names1 ++ Names0, [])]},
+            NewAcc = maps:put(Mod, NewInherit, Acc),
+            combine_inherits(Rest, NewAcc)
+    end.
+
+combine_names([], Acc) ->
+    lists:reverse(Acc);
+combine_names([{_, _, Name} = Tuple | Rest], Acc) ->
+    case lists:keyfind(Name, 3, Acc) of
+        false ->
+            NewAcc = [Tuple | Acc],
+            combine_names(Rest, NewAcc);
+        _ ->
+            combine_names(Rest, Acc)
+    end.
