@@ -26,5 +26,5 @@
 
 @avp_types
 
-    XXX    111    Unsigned32    M
-    YYY    222    Unsigned32    -
+    AAA    111    Unsigned32    M
+    BBB    222    Unsigned32    -

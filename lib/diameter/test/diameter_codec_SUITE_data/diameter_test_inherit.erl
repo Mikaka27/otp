@@ -34,8 +34,9 @@ run() ->
     H = #diameter_header{version = 1,
                          end_to_end_id = 1,
                          hop_by_hop_id = 1},
-    Vs = [{'XXX', [0]},
-          {'YYY', [1]}],
+    Vs = [{'AAA', [0]},
+          {'BBB', [1]},
+          {'CCC', [2]}],
     Pkt = #diameter_packet{header = H,
                            msg = Vs},
 
@@ -50,8 +51,9 @@ run(M, Pkt) ->
     dec(M, diameter_codec:decode(diameter_d, opts(M), Pkt)).
 
 dec('ZR', #diameter_packet
-    {msg = #d_ZR{'XXX' = [0],
-                 'YYY' = [1]}}) ->
+    {msg = #d_ZR{'AAA' = [0],
+                 'BBB' = [1],
+                 'CCC' = [2]}}) ->
     ok.
 
 opts(Mod) ->
