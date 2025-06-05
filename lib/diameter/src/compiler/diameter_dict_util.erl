@@ -1173,19 +1173,15 @@ mk_code(_Code, [[Line, _Name, IsReq]]) ->
 import_inherits(Dict, Opts) ->
     code:add_pathsa([D || {include, D} <- Opts]),
 
-    % Inherits = find(inherits, Dict),
+    %% Inherits = find(inherits, Dict),
     AllInherits = get_all_inherits(Dict),
-    % file:write_file("/workspaces/otp/out5.txt", io_lib:fwrite("Inherits: ~p~nAllInherits: ~p~n~n~n", [Inherits, AllInherits]), [append]),
     dict:store(inherits, AllInherits, Dict).
 
-%% import_avps/2
+%% import_avps/1
 
 import_avps(Dict) ->
     Import = inherit(Dict),
-                                                % file:write_file("/workspaces/otp/out.txt", io_lib:fwrite("~p~nDict: ~p~nOpts: ~p~nImport: ~p~n~n~n", [?FUNCTION_NAME, Dict, Opts, Import]), [append]),
     report(imported, Import),
-
-    % NestedImports = find_nested_key(import_avps, Dict),
 
     %% examine/1 tests that all referenced AVP's are either defined
     %% or imported.
@@ -1193,14 +1189,9 @@ import_avps(Dict) ->
     ImportValue = lists:map(fun({M, _, As}) -> {M, [A || {_,A} <- As]} end,
                             lists:reverse(Import)),
 
-    % file:write_file("/workspaces/otp/out2.txt", io_lib:fwrite("Dict: ~p~nImports: ~p~n", [Dict, ImportValue ++ NestedImports]), [append]),
-    % file:write_file("/workspaces/otp/out2.txt", io_lib:fwrite("Import: ~p~nImportValue: ~p~nNestedImports: ~p~n", [Import, ImportValue, NestedImports]), [append]),
-
-    Dict2 = dict:store(import_avps,
+    dict:store(import_avps,
                ImportValue,
-               foldl(fun explode_imports/2, Dict, Import)),
-    % file:write_file("/workspaces/otp/out3.txt", io_lib:fwrite("Dict2: ~p~n", [dict:to_list(Dict2)]), [append]),
-    Dict2.
+               foldl(fun explode_imports/2, Dict, Import)).
 
 explode_imports({Mod, Line, Avps}, Dict) ->
     foldl([fun xi/4, Mod, Line], Dict, Avps).
@@ -1226,7 +1217,18 @@ import_groups(Dict) ->
     dict:store(import_groups, import(grouped, Dict), Dict).
 
 import_enums(Dict) ->
-    dict:store(import_enums, import(enum, Dict), Dict).
+    case import(enum, Dict) of
+        [{_, _}] = Enums ->
+            Inherits = find(inherits, Dict),
+            case inherit_enums_for_defined_avps(Inherits, Enums, dict:fetch(import_avps, Dict)) of
+                [] ->
+                    dict:store(import_enums, Enums, Dict);
+                InheritedEnums ->
+                    dict:store(import_enums, InheritedEnums, Dict)
+            end;
+        Enums ->
+            dict:store(import_enums, Enums, Dict)
+    end.
 
 import(Key, Dict) ->
     flatmap([fun import_key/2, Key], dict:fetch(import_avps, Dict)).
@@ -1244,15 +1246,13 @@ import_key({Mod, Avps}, Key) ->
     end.
 
 %% ------------------------------------------------------------------------
-%% inherit/2
+%% inherit/1
 %%
 %% Return a {Mod, Line, [{Lineno, Avp}]} list, where Mod is a module
 %% name, Line points to the corresponding @inherit and each Avp is
 %% from Mod:dict(). Lineno is 0 if the import is implicit.
 
 inherit(Dict) ->
-    % code:add_pathsa([D || {include, D} <- Opts]),
-    % file:write_file("/workspaces/otp/out.txt", io_lib:fwrite("Inherits: ~p~nNestedInherits: ~p~n", [find(inherits, Dict), find_inherits(Dict)]), [append]),
     foldl(fun inherit_avps/2, [], find(inherits, Dict)).
 %% Note that the module order of the returned lists is reversed
 %% relative to @inherits.
@@ -1283,10 +1283,18 @@ acc_avp({Name, _Code, _Type, _Flags} = A, {Found, Not} = Acc) ->
             Acc
     end.
 
-%% avps_from_module/2
+%% avps_from_module/1
 
 avps_from_module(Mod) ->
     orddict:fetch(avp_types, dict(Mod)).
+
+%% imported_avps_from_module/1
+imported_avps_from_module(Mod) ->
+    orddict:fetch(import_avps, dict(Mod)).
+
+%% enums_from_module/1
+enums_from_module(Mod) ->
+    orddict:fetch(enum, dict(Mod)).
 
 dict(Mod) ->
     try Mod:dict() of
@@ -1301,6 +1309,71 @@ dict(Mod) ->
                            no_dict),
                     [Mod])
     end.
+
+% inherited_modules/2
+% Returns list of inherited modules, without returning module in which avp is defined
+inherited_modules(Mod, Inherits) ->
+    lists:filtermap(fun([_, {_, _, M} | _Names]) ->
+        AM = ?A(M),
+        case AM of
+            Mod ->
+                false;
+            _ ->
+                {true, AM}
+        end
+    end, Inherits).
+
+%% enums_and_avps_from_modules/1
+%% Returns a list of {Mod, Enums, Avps} from modules
+enums_and_avps_from_modules(Mods) ->
+    lists:map(fun(Mod) ->
+        Enums = enums_from_module(Mod),
+        Avps = imported_avps_from_module(Mod),
+        {Mod, Enums, Avps}
+    end, Mods).
+
+inherit_enums_for_defined_avps(Inherits, [{Mod, Enums}], Avps) ->
+    Mods = inherited_modules(Mod, Inherits),
+    EnumsAvps = enums_and_avps_from_modules(Mods),
+    lists:filtermap(fun({Name, _Values}) ->
+        case find_avp(Name, "Enumerated", Avps) of
+            [] ->
+                false;
+            [{Name, _Id, _Type, _Flags} = Avp] ->
+                case find_enum_with_same_avp_id(Avp, EnumsAvps) of
+                    [] ->
+                        false;
+                    [Enum] ->
+                        {true, Enum}
+                end
+        end
+    end, Enums).
+ 
+find_avp(Name, Type, Avps) ->
+    lists:filtermap(fun({_Mod, AvpsInModule}) ->
+        case lists:keyfind(Name, 1, AvpsInModule) of
+            {Name, _Id, Type, _Flags} = Avp ->
+                {true, Avp};
+            _ ->
+                false
+        end
+    end, Avps).
+
+find_enum_with_same_avp_id({Name, _Id, _Type, _Flags} = Avp, EnumsAvps) ->
+    lists:filtermap(fun({Mod, Enums, Avps}) ->
+        case {find_avp_in_imported_avps(Avp, Avps), find_enum_with_name(Name, Enums)} of
+            {{value, _}, {value, Enum}} ->
+                {true, {Mod, [Enum]}};
+            _ ->
+                false
+        end
+    end, EnumsAvps).
+
+find_avp_in_imported_avps(Avp, ImportedAvps) ->
+    lists:search(fun({_Mod, Avps}) -> lists:member(Avp, Avps) end, ImportedAvps).
+
+find_enum_with_name(Name, Enums) ->
+    lists:search(fun({N, _Values}) -> Name == N end, Enums).
 
 %% ===========================================================================
 %% examine/1
@@ -1428,27 +1501,39 @@ convert_to_nested_inherit({Mod, Names}) ->
     [0, {word, 0, Mod} | lists:map(fun(Name) -> {word, 0, Name} end, Names)].
 
 combine_inherits([], Acc) ->
-    Values = maps:values(Acc),
+    Values = lists:flatten(maps:values(Acc)),
     Sorted = lists:sort(Values),
     lists:map(fun({_Index, Inherit}) -> Inherit end, Sorted);
-combine_inherits([{_Index0, [_Line0, {_, _, Mod} | Names0]} = Inherit0 | Rest], Acc) ->
+combine_inherits([{Index, [Line, {_, _, Mod} | Names]} = Inherit | Rest], Acc) ->
     case maps:get(Mod, Acc, undefined) of
         undefined ->
             %% Inherit to Mod is not present in Acc yet
-            NewAcc = maps:put(Mod, Inherit0, Acc),
+            NewAcc = maps:put(Mod, [Inherit], Acc),
             combine_inherits(Rest, NewAcc);
-        {_Index1, [_Line2, {_, _, Mod}]} ->
-            %% Inherit to whole Mod is present in Acc, we can ignore our Inherit
+        [{_IndexPrev, [LinePrev, {_, _, Mod} | _NamesPrev]} = InheritPrev] when Line /= 0, LinePrev /= 0 ->
+            %% Both inherits are not on line 0, they are in the same dictionary
+            %% we must not combine them, but preserve both of them
+            %% so it's detected as an error by the compiler
+            NewAcc = maps:put(Mod, [InheritPrev, Inherit], Acc),
+            combine_inherits(Rest, NewAcc);
+        [{_IndexPrev, [LinePrev, {_, _, Mod}]}] when LinePrev /= 0 ->
+            %% Inherit to whole Mod with non-zero line number is present in Acc,
+            %% we can ignore our Inherit
             combine_inherits(Rest, Acc);
-        {_Index1, [_Line2, {_, _, Mod} | _Names1]} when Names0 == [] ->
-            %% Some names from Mod are already inherited, but we can replace it with whole module
-            %% Inherit
-            NewAcc = maps:put(Mod, Inherit0, Acc),
+        [{_IndexPrev, [_LinePrev, {_, _, Mod}]}] when Line /= 0 ->
+            %% We have inherit with non-zero line number, we can replace previous
+            %% one with line number zero
+            NewAcc = maps:put(Mod, [Inherit], Acc),
             combine_inherits(Rest, NewAcc);
-        {Index1, [_Line2, {Token, _, Mod} | Names1]} ->
+        [{_IndexPrev, [_LinePrev, {_, _, Mod} | _NamesPrev]}] when Names == [] ->
+            %% Some names from Mod are already inherited, but we can replace previous inherit with
+            %% whole module Inherit
+            NewAcc = maps:put(Mod, [Inherit], Acc),
+            combine_inherits(Rest, NewAcc);
+        [{_IndexPrev, [_LinePrev, {Token, _, Mod} | NamesPrev]}] ->
             %% Some names from Mod are already inherited, we must add our Names to the list
-            NewInherit = {Index1, [0, {Token, 0, Mod} | combine_names(Names1 ++ Names0, [])]},
-            NewAcc = maps:put(Mod, NewInherit, Acc),
+            NewInherit = {Index, [0, {Token, 0, Mod} | combine_names(NamesPrev ++ Names, [])]},
+            NewAcc = maps:put(Mod, [NewInherit], Acc),
             combine_inherits(Rest, NewAcc)
     end.
 
