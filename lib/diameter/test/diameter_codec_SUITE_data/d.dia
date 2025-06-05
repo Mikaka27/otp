@@ -27,7 +27,7 @@
 @inherits diameter_c
 
 @enum CCC
-    FOUR 4
+    THREE 3
 
 @messages
 
