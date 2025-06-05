@@ -29,11 +29,10 @@
 
     Result-Code
 
-@inherits diameter_b
 @inherits diameter_a
 
     BBB
 
 @enum CCC
 
-    THREE 3
+    TWO 2

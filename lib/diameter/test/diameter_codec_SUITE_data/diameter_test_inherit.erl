@@ -36,7 +36,10 @@ run() ->
                          hop_by_hop_id = 1},
     Vs = [{'AAA', [0]},
           {'BBB', [1]},
-          {'CCC', [2]}],
+          {'CCC', [?D_CCC_ZERO]},
+          {'CCC', [?D_CCC_ONE]},
+          {'CCC', [?D_CCC_TWO]},
+          {'CCC', [?D_CCC_THREE]}],
     Pkt = #diameter_packet{header = H,
                            msg = Vs},
 
@@ -53,7 +56,10 @@ run(M, Pkt) ->
 dec('ZR', #diameter_packet
     {msg = #d_ZR{'AAA' = [0],
                  'BBB' = [1],
-                 'CCC' = [2]}}) ->
+                 'CCC' = [?D_CCC_ZERO],
+                 'CCC' = [?D_CCC_ONE],
+                 'CCC' = [?D_CCC_TWO],
+                 'CCC' = [?D_CCC_THREE]}}) ->
     ok.
 
 opts(Mod) ->
