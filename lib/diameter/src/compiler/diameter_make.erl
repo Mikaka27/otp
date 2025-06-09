@@ -127,6 +127,11 @@ file or returned, and can have the following types.
 - **`return`** - Return results in a `{ok, [Out]}` tuple instead of writing to
   file and returning `ok`.
 
+- **`indirect_inherits`** - This option changes the behavior, so that when inherits
+  themselves are inherited from inherited dictionaries.
+
+  @TODO: Add example here!
+
 - **`{name|prefix, string()}`** - Transform the input dictionary before
   compilation, setting [`@name`](diameter_dict.md#name) or
   [`@prefix`](diameter_dict.md#prefix) to the specified string.

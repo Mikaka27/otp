@@ -391,7 +391,6 @@ do_parse(File, Opts) ->
     Bin  = do([fun read/1, File], read),
     Toks = do([fun diameter_dict_scanner:scan/1, Bin], scan),
     Tree = do([fun diameter_dict_parser:parse/1, Toks], parse),
-    % file:write_file("/workspaces/otp/out.txt", io_lib:fwrite("File: ~p~n~p~n======================================================================================~n~n", [File, Tree]), [append]),
     make_dict(Tree, Opts).
 
 do([F|A], E) ->
@@ -409,7 +408,6 @@ read(File) ->
 
 make_dict(Parse, Opts) ->
     Dict = pass3(pass2(pass1(reset(make_dict(Parse), Opts))), Opts),
-    % file:write_file("/workspaces/otp/out4.txt", io_lib:fwrite("make_dict, Dict: ~p~n", [make_orddict(Dict)]), [append]),
     ok = examine(Dict),
     make_orddict(Dict).
 
@@ -1173,9 +1171,13 @@ mk_code(_Code, [[Line, _Name, IsReq]]) ->
 import_inherits(Dict, Opts) ->
     code:add_pathsa([D || {include, D} <- Opts]),
 
-    %% Inherits = find(inherits, Dict),
-    AllInherits = get_all_inherits(Dict),
-    dict:store(inherits, AllInherits, Dict).
+    case lists:member(indirect_inherits, Opts) of
+        true ->
+            AllInherits = get_all_inherits(Dict),
+            dict:store(inherits, AllInherits, Dict);
+        false ->
+            Dict
+    end.
 
 %% import_avps/1
 
@@ -1504,7 +1506,7 @@ combine_inherits([], Acc) ->
     Values = lists:flatten(maps:values(Acc)),
     Sorted = lists:sort(Values),
     lists:map(fun({_Index, Inherit}) -> Inherit end, Sorted);
-combine_inherits([{Index, [Line, {_, _, Mod} | Names]} = Inherit | Rest], Acc) ->
+combine_inherits([{_Index, [Line, {_, _, Mod} | Names]} = Inherit | Rest], Acc) ->
     case maps:get(Mod, Acc, undefined) of
         undefined ->
             %% Inherit to Mod is not present in Acc yet
@@ -1525,25 +1527,13 @@ combine_inherits([{Index, [Line, {_, _, Mod} | Names]} = Inherit | Rest], Acc) -
             %% one with line number zero
             NewAcc = maps:put(Mod, [Inherit], Acc),
             combine_inherits(Rest, NewAcc);
-        [{_IndexPrev, [_LinePrev, {_, _, Mod} | _NamesPrev]}] when Names == [] ->
+        _PrevInherits when Names == [] ->
             %% Some names from Mod are already inherited, but we can replace previous inherit with
             %% whole module Inherit
             NewAcc = maps:put(Mod, [Inherit], Acc),
             combine_inherits(Rest, NewAcc);
-        [{_IndexPrev, [_LinePrev, {Token, _, Mod} | NamesPrev]}] ->
-            %% Some names from Mod are already inherited, we must add our Names to the list
-            NewInherit = {Index, [0, {Token, 0, Mod} | combine_names(NamesPrev ++ Names, [])]},
-            NewAcc = maps:put(Mod, [NewInherit], Acc),
+        PrevInherits ->
+            %% Some names from Mod are already inherited, we must keep multiple inherits
+            NewAcc = maps:put(Mod, PrevInherits ++ [Inherit], Acc),
             combine_inherits(Rest, NewAcc)
-    end.
-
-combine_names([], Acc) ->
-    lists:reverse(Acc);
-combine_names([{_, _, Name} = Tuple | Rest], Acc) ->
-    case lists:keyfind(Name, 3, Acc) of
-        false ->
-            NewAcc = [Tuple | Acc],
-            combine_names(Rest, NewAcc);
-        _ ->
-            combine_names(Rest, Acc)
     end.
