@@ -49,8 +49,7 @@
          gen/1,
          lib/1,
          unknown/1,
-         recode/1,
-         inherit/1
+         recode/1
         ]).
 
 -include("diameter.hrl").
@@ -74,8 +73,7 @@ all() ->
      gen,
      lib,
      unknown,
-     recode,
-     inherit
+     recode
     ].
 
 
@@ -148,15 +146,6 @@ recode(_Config) ->
         "~n   Res: ~p", [?FUNCTION_NAME, Res]),
     Res.
 
-inherit(Config) ->
-    ?CL("~w -> entry", [?FUNCTION_NAME]),
-    Priv = proplists:get_value(priv_dir, Config),
-    Data = proplists:get_value(data_dir, Config),
-    Res = inherit(Priv, Data),
-    ?CL("~w -> done when"
-        "~n   Res: ~p", [?FUNCTION_NAME, Res]),
-    Res.
-
 
 %% ===========================================================================
 
@@ -214,17 +203,6 @@ run(recode) ->
                                             failed_error]])
     after
         ok = diameter:stop()
-    end;
-
-run(inherit) ->
-    PD = ?MKTEMP("diameter_codec"),
-    DD = filename:join([code:lib_dir(diameter),
-                        "test",
-                        "diameter_codec_SUITE_data"]),
-    try
-        inherit(PD, DD)
-    after
-        file:del_dir_r(PD)
     end;
 
 run(List) ->
@@ -474,21 +452,3 @@ opts(Mod) ->
       strict_mbit => true,
       rfc => 6733,
       failed_avp => false}.
-
-inherit(Priv, Data) ->
-    ?CL("~w -> entry with"
-        "~n   Priv dir: ~p"
-        "~n   Data dir: ~p"
-        "~n", [?FUNCTION_NAME, Priv, Data]),
-    ok = make(Data, "a.dia", Priv),
-    {ok, _, _} = compile(Priv, "diameter_a.erl"),
-    ok = make(Data, "b.dia", Priv),
-    {ok, _, _} = compile(Priv, "diameter_b.erl"),
-    ok = make(Data, "c.dia", Priv),
-    {ok, _, _} = compile(Priv, "diameter_c.erl"),
-    ok = make(Data, "d.dia", Priv),
-    {ok, _, _} = compile(Priv, "diameter_d.erl"),
-    {ok, _, _} = compile(Priv,
-                            filename:join([Data, "diameter_test_inherit.erl"]),
-                            [{i, Priv}]),
-    diameter_test_inherit:run().
