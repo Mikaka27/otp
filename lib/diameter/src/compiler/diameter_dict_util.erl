@@ -1512,18 +1512,18 @@ combine_inherits([{_Index, [Line, {_, _, Mod} | Names]} = Inherit | Rest], Acc) 
             %% Inherit to Mod is not present in Acc yet
             NewAcc = maps:put(Mod, [Inherit], Acc),
             combine_inherits(Rest, NewAcc);
-        [{_IndexPrev, [LinePrev, {_, _, Mod} | _NamesPrev]} = InheritPrev] when Line /= 0, LinePrev /= 0 ->
-            %% Both inherits are not on line 0, they are in the same dictionary
-            %% we must not combine them, but preserve both of them
+        [{_IndexPrev, [LinePrev, {_, _, Mod} | _NamesPrev]} | _] = PrevInherits when Line /= 0, LinePrev /= 0 ->
+            %% All inherits are not on line 0, they are in the same dictionary
+            %% we must not combine them, but preserve all of them
             %% so it's detected as an error by the compiler
-            NewAcc = maps:put(Mod, [InheritPrev, Inherit], Acc),
+            NewAcc = maps:put(Mod, PrevInherits ++ [Inherit], Acc),
             combine_inherits(Rest, NewAcc);
         [{_IndexPrev, [LinePrev, {_, _, Mod}]}] when LinePrev /= 0 ->
             %% Inherit to whole Mod with non-zero line number is present in Acc,
             %% we can ignore our Inherit
             combine_inherits(Rest, Acc);
         [{_IndexPrev, [_LinePrev, {_, _, Mod}]}] when Line /= 0 ->
-            %% We have inherit with non-zero line number, we can replace previous
+            %% We have whole module inherit with non-zero line number, we can replace previous
             %% one with line number zero
             NewAcc = maps:put(Mod, [Inherit], Acc),
             combine_inherits(Rest, NewAcc);

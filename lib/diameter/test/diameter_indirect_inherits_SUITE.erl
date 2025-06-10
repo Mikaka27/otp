@@ -46,7 +46,10 @@
          verify_multiple_whole_dict_imports_same_file/1,
          verify_multiple_limited_then_whole_dict_import_same_file/1,
          verify_both_limited_imports_are_kept_with_multiple_inherits/1,
-         verify_limited_import_is_replaced_with_whole_dict_import/1
+         verify_multiple_limited_imports_are_resolved_when_overlapping/1,
+         verify_limited_import_is_replaced_with_whole_dict_import/1,
+         verify_whole_dict_import_is_not_replaced_with_limited_import/1,
+         verify_enum_values_are_imported_along_the_inheritance_chain/1
         ]).
 
 -include("diameter_util.hrl").
@@ -64,11 +67,14 @@
 -define(OPTS, [erl, forms, return]).
 -define(OPTS_INHERITS, ?OPTS ++ [indirect_inherits]).
 
+-define(DEFAULT_AVP_NAMES, ['AAA', 'BBB', 'CCC']).
+
 -define(AVP_HEADER(Name),
     case Name of
         'AAA' -> {111, 64, undefined};
         'BBB' -> {222, 0, undefined};
-        'CCC' -> {333, 0, undefined}
+        'CCC' -> {333, 0, undefined};
+        'DDD' -> {444, 0, undefined}
     end
 ).
 
@@ -99,8 +105,29 @@
 ).
 
 -define(AVP_DICT_D(Inherits),
-    ?DICT("diameter_dict_d", "d") ++
+    ?DICT("diameter_test_d", "d") ++
     lists:join("\n", Inherits)
+).
+
+-define(ENUM_DICT_A,
+    ?AVP_DICT_A ++
+    "DDD 444 Enumerated -" ++
+    "@enum DDD ZERO 0 ONE 1"
+).
+
+-define(ENUM_DICT_B,
+    ?AVP_DICT_B(["@inherits diameter_test_a"]) ++
+    "@enum DDD TWO 2 THREE 3"
+).
+
+-define(ENUM_DICT_C,
+    ?AVP_DICT_C(["@inherits diameter_test_b"]) ++
+    "@enum DDD FOUR 4 FIVE 5"
+).
+
+-define(ENUM_DICT_D,
+    ?AVP_DICT_D(["@inherits diameter_test_c"]) ++
+    "@enum DDD SIX 6 SEVEN 7"
 ).
 
 %% ===========================================================================
@@ -113,7 +140,10 @@ all() ->
      verify_multiple_whole_dict_imports_same_file,
      verify_multiple_limited_then_whole_dict_import_same_file,
      verify_both_limited_imports_are_kept_with_multiple_inherits,
-     verify_limited_import_is_replaced_with_whole_dict_import
+     verify_multiple_limited_imports_are_resolved_when_overlapping,
+     verify_limited_import_is_replaced_with_whole_dict_import,
+     verify_whole_dict_import_is_not_replaced_with_limited_import,
+     verify_enum_values_are_imported_along_the_inheritance_chain
      ].
 
 init_per_suite(Config) ->
@@ -202,6 +232,21 @@ verify_avps(M, PresentAvps, NotPresentAvps) ->
 
 %% ===========================================================================
 
+verify_enum_values(M, Name, PresentValues) ->
+    verify_enum_values(M, Name, PresentValues, []).
+
+verify_enum_values(M, Name, PresentValues, NotPresentValues) ->
+    lists:foreach(fun(Value) ->
+        <<0, 0, 0, Value>> = Encoded = M:enumerated_avp(encode, Name, Value),
+        Value = M:enumerated_avp(decode, Name, Encoded)
+    end, PresentValues),
+    lists:foreach(fun(Value) ->
+        {'EXIT', {badarg, _}} = catch M:enumerated_avp(encode, Name, Value),
+        {'EXIT', {badarg, _}} = catch M:enumerated_avp(decode, Name, <<0, 0, 0, Value>>)
+    end, NotPresentValues).
+
+%% ===========================================================================
+
 codec_list_of_dicts(Dicts) ->
     codec_list_of_dicts(Dicts, ?OPTS).
 
@@ -230,7 +275,7 @@ test(_) ->
 %% ===========================================================================
 
 verify_multiple_limited_imports_same_file(_) ->
-    %% This test checks that when you inherit same avp twice you get avp_already_defined error
+    %% This test checks that when you inherit same avp twice you get avp_already_defined error.
     DictA = ?AVP_DICT_A,
     DictB = ?AVP_DICT_B(["@inherits diameter_test_a AAA", "@inherits diameter_test_a AAA"]),
     
@@ -244,7 +289,7 @@ verify_multiple_limited_imports_same_file(_) ->
 %% ===========================================================================
 
 verify_multiple_whole_dict_imports_same_file(_) ->
-    %% This test checks that when you inherit same dictionary twice you get duplicate_import error
+    %% This test checks that when you inherit same dictionary twice you get duplicate_import error.
     DictA = ?AVP_DICT_A,
     DictB = ?AVP_DICT_B(["@inherits diameter_test_a", "@inherits diameter_test_a"]),
     
@@ -259,7 +304,7 @@ verify_multiple_whole_dict_imports_same_file(_) ->
 
 verify_multiple_limited_then_whole_dict_import_same_file(_) ->
     %% This test checks that when you inherit avp from dictionary, and then inherit whole
-    %% dictionary, you get duplicate_import error
+    %% dictionary, you get duplicate_import error.
     DictA = ?AVP_DICT_A,
 
     Inherits = [
@@ -280,13 +325,13 @@ verify_multiple_limited_then_whole_dict_import_same_file(_) ->
 verify_both_limited_imports_are_kept_with_multiple_inherits(_) ->
     %% Given dictionaries a <-- b <-- c <-- d, when dict b inherits one avp from dict a
     %% then dict c inherits one avp from dict a AND inherits dict b, dict c and dict d should have
-    %% inherited both avps of dict a 
+    %% inherited both avps of dict a.
     DictA = ?AVP_DICT_A,
 
     DictB = ?AVP_DICT_B(["@inherits diameter_test_a AAA"]),
 
     DictC = ?AVP_DICT_C(["@inherits diameter_test_a BBB", "@inherits diameter_test_b"]),
-    %% Check reverse order as Dict3
+    %% Check reverse order as DictC
     DictC_R = ?AVP_DICT_C(["@inherits diameter_test_b", "@inherits diameter_test_a BBB"]),
 
     DictD = ?AVP_DICT_D(["@inherits diameter_test_c"]),
@@ -316,16 +361,59 @@ verify_both_limited_imports_are_kept_with_multiple_inherits(_) ->
 
 %% ===========================================================================
 
+verify_multiple_limited_imports_are_resolved_when_overlapping(_) ->
+    %% Given dictionaries a <-- b <-- c <-- d, when dict b inherits AAA and BBB from dict a,
+    %% dict c inherits dict b and BBB and CCC from dict a, dict c and dict d should have resolved
+    %% inherits, so that they see AAA, BBB, CCC
+    DictA = ?AVP_DICT_A,
+
+    DictB = ?AVP_DICT_B(["@inherits diameter_test_a AAA BBB"]),
+    %% Check reverse order as DictB
+    % DictB_R = ?AVP_DICT_B(["@inherits diameter_test_a BBB AAA"]),
+    
+    DictC = ?AVP_DICT_C(["@inherits diameter_test_a BBB CCC", "@inherits diameter_test_b"]),
+    %% Check reverse order as DictB
+    DictC_R = ?AVP_DICT_C(["@inherit diameter_test_b", "@inherits diameter_test_a BBB CCC"]),
+
+    DictD = ?AVP_DICT_D(["@inherits diameter_test_c"]),
+
+    {ok, [EA, FA]} = codec_list_of_options(DictA),
+    ct:pal("~s", [EA]),
+    diameter_test_a = MA = load_forms(FA),
+    verify_avps(MA, ?DEFAULT_AVP_NAMES),
+
+    {ok, [EB, FB]} = codec_list_of_options(DictB),
+    ct:pal("~s", [EB]),
+    diameter_test_b = MB = load_forms(FB),
+    verify_avps(MB, ['AAA', 'BBB']),
+
+    {ok, [EC, FC]} = diameter_make:codec(DictC, ?OPTS_INHERITS),
+    ct:pal("~s", [EC]),
+    diameter_test_c = MC = load_forms(FC),
+    verify_avps(MC, ?DEFAULT_AVP_NAMES),
+
+    {ok, [EC_R, FC_R]} = diameter_make:codec(DictC_R, ?OPTS_INHERITS),
+    ct:pal("~s", [EC_R]),
+    diameter_test_c = MC_R = load_forms(FC_R),
+    verify_avps(MC_R, ?DEFAULT_AVP_NAMES),
+
+    {ok, [ED, FD]} = diameter_make:codec(DictD, ?OPTS_INHERITS),
+    ct:pal("~s", [ED]),
+    diameter_test_d = MD = load_forms(FD),
+    verify_avps(MD, ?DEFAULT_AVP_NAMES).
+
+%% ===========================================================================
+
 verify_limited_import_is_replaced_with_whole_dict_import(_) ->
     %% Given dictionaries a <-- b <-- c <-- d, when dict b inherits one avp from dict a
     %% then dict c inherits whole dict a AND inherits dict b, dict c and dict d should have
-    %% inherited all avps of dict a 
+    %% inherited all avps of dict a.
     DictA = ?AVP_DICT_A,
 
     DictB = ?AVP_DICT_B(["@inherits diameter_test_a AAA"]),
 
     DictC = ?AVP_DICT_C(["@inherits diameter_test_a", "@inherits diameter_test_b"]),
-    %% Check reverse order as Dict3
+    %% Check reverse order as DictC
     DictC_R = ?AVP_DICT_C(["@inherits diameter_test_b", "@inherits diameter_test_a"]),
 
     DictD = ?AVP_DICT_D(["@inherits diameter_test_c"]),
@@ -341,14 +429,89 @@ verify_limited_import_is_replaced_with_whole_dict_import(_) ->
     {ok, [EC, FC]} = diameter_make:codec(DictC, ?OPTS_INHERITS),
     ct:pal("~s", [EC]),
     diameter_test_c = MC = load_forms(FC),
-    verify_avps(MC, ['AAA', 'BBB', 'CCC']),
+    verify_avps(MC, ?DEFAULT_AVP_NAMES),
 
     {ok, [EC_R, FC_R]} = diameter_make:codec(DictC_R, ?OPTS_INHERITS),
     ct:pal("~s", [EC_R]),
     diameter_test_c = MC_R = load_forms(FC_R),
-    verify_avps(MC_R, ['AAA', 'BBB', 'CCC']),
+    verify_avps(MC_R, ?DEFAULT_AVP_NAMES),
 
     {ok, [ED, FD]} = diameter_make:codec(DictD, ?OPTS_INHERITS),
     ct:pal("~s", [ED]),
     diameter_test_d = MD = load_forms(FD),
-    verify_avps(MD, ['AAA', 'BBB', 'CCC']).
+    verify_avps(MD, ?DEFAULT_AVP_NAMES).
+
+%% ===========================================================================
+
+verify_whole_dict_import_is_not_replaced_with_limited_import(_) ->
+    %% Given dictionaries a <-- b <-- c <-- d, when dict b inherits whole dict a
+    %% then dict c inherits one avp from dict a AND inherits dict b, dict c and dict d should have
+    %% inherited all avps of dict a.
+    DictA = ?AVP_DICT_A,
+
+    DictB = ?AVP_DICT_B(["@inherits diameter_test_a"]),
+
+    DictC = ?AVP_DICT_C(["@inherits diameter_test_a AAA", "@inherits diameter_test_b"]),
+    %% Check reverse order as Dict3
+    DictC_R = ?AVP_DICT_C(["@inherits diameter_test_b", "@inherits diameter_test_a AAA"]),
+
+    DictD = ?AVP_DICT_D(["@inherits diameter_test_c"]),
+
+    {ok, [EA, FA]} = codec_list_of_options(DictA),
+    ct:pal("~s", [EA]),
+    diameter_test_a = load_forms(FA),
+
+    {ok, [EB, FB]} = codec_list_of_options(DictB),
+    ct:pal("~s", [EB]),
+    diameter_test_b = load_forms(FB),
+
+    {ok, [EC, FC]} = diameter_make:codec(DictC, ?OPTS_INHERITS),
+    ct:pal("~s", [EC]),
+    diameter_test_c = MC = load_forms(FC),
+    verify_avps(MC, ?DEFAULT_AVP_NAMES),
+
+    {ok, [EC_R, FC_R]} = diameter_make:codec(DictC_R, ?OPTS_INHERITS),
+    ct:pal("~s", [EC_R]),
+    diameter_test_c = MC_R = load_forms(FC_R),
+    verify_avps(MC_R, ?DEFAULT_AVP_NAMES),
+
+    {ok, [ED, FD]} = diameter_make:codec(DictD, ?OPTS_INHERITS),
+    ct:pal("~s", [ED]),
+    diameter_test_d = MD = load_forms(FD),
+    verify_avps(MD, ?DEFAULT_AVP_NAMES).
+
+%% ===========================================================================
+
+verify_enum_values_are_imported_along_the_inheritance_chain(_) ->
+    %% Given dictionaries a <-- b <-- c <-- d, when dict a defines an enum with 2 values,
+    %% and then each dict in the chain inherits additional values, the last dict should
+    %% have all enum values inherited.
+
+    DictA = ?ENUM_DICT_A,
+    DictB = ?ENUM_DICT_B,
+    DictC = ?ENUM_DICT_C,
+    DictD = ?ENUM_DICT_D,
+
+    {ok, [EA, FA]} = codec_list_of_options(DictA),
+    ct:pal("~s", [EA]),
+    diameter_test_a = MA = load_forms(FA),
+    verify_avps(MA, ?DEFAULT_AVP_NAMES ++ ['DDD']),
+    verify_enum_values(MA, 'DDD', [0, 1], [2, 3, 4, 5, 6, 7]),
+
+    {ok, [EB, FB]} = codec_list_of_options(DictB),
+    ct:pal("~s", [EB]),
+    diameter_test_b = MB = load_forms(FB),
+    verify_avps(MB, ?DEFAULT_AVP_NAMES ++ ['DDD']),
+    verify_enum_values(MB, 'DDD', [0, 1, 2, 3], [4, 5, 6, 7]),
+
+    {ok, [EC, FC]} = diameter_make:codec(DictC, ?OPTS_INHERITS),
+    ct:pal("~s", [EC]),
+    diameter_test_c = MC = load_forms(FC),
+    verify_avps(MC, ?DEFAULT_AVP_NAMES ++ ['DDD']),
+    verify_enum_values(MC, 'DDD', [0, 1, 2, 3, 4, 5], [6, 7]),
+
+    {ok, [ED, FD]} = diameter_make:codec(DictD, ?OPTS_INHERITS),
+    ct:pal("~s", [ED]),
+    diameter_test_d = MD = load_forms(FD),
+    verify_avps(MD, ?DEFAULT_AVP_NAMES ++ ['DDD']),
+    verify_enum_values(MD, 'DDD', [0, 1, 2, 3, 4, 5, 6, 7]).
