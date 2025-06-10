@@ -373,7 +373,7 @@ verify_multiple_limited_imports_are_resolved_when_overlapping(_) ->
     
     DictC = ?AVP_DICT_C(["@inherits diameter_test_a BBB CCC", "@inherits diameter_test_b"]),
     %% Check reverse order as DictB
-    DictC_R = ?AVP_DICT_C(["@inherit diameter_test_b", "@inherits diameter_test_a BBB CCC"]),
+    DictC_R = ?AVP_DICT_C(["@inherits diameter_test_b", "@inherits diameter_test_a BBB CCC"]),
 
     DictD = ?AVP_DICT_D(["@inherits diameter_test_c"]),
 

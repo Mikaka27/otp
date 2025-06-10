@@ -1510,30 +1510,56 @@ combine_inherits([{_Index, [Line, {_, _, Mod} | Names]} = Inherit | Rest], Acc) 
     case maps:get(Mod, Acc, undefined) of
         undefined ->
             %% Inherit to Mod is not present in Acc yet
+            ct:pal("Line: ~p, Inherit: ~p, Prev: undefined~n", [?LINE, Inherit]),
             NewAcc = maps:put(Mod, [Inherit], Acc),
             combine_inherits(Rest, NewAcc);
         [{_IndexPrev, [LinePrev, {_, _, Mod} | _NamesPrev]} | _] = PrevInherits when Line /= 0, LinePrev /= 0 ->
             %% All inherits are not on line 0, they are in the same dictionary
             %% we must not combine them, but preserve all of them
             %% so it's detected as an error by the compiler
+            ct:pal("Line: ~p, Inherit: ~p, Prev: ~p~n", [?LINE, Inherit, PrevInherits]),
             NewAcc = maps:put(Mod, PrevInherits ++ [Inherit], Acc),
             combine_inherits(Rest, NewAcc);
-        [{_IndexPrev, [LinePrev, {_, _, Mod}]}] when LinePrev /= 0 ->
+        [{_IndexPrev, [LinePrev, {_, _, Mod}]} = PrevInherit] when Names == [], LinePrev /= 0 ->
             %% Inherit to whole Mod with non-zero line number is present in Acc,
             %% we can ignore our Inherit
+            ct:pal("Line: ~p, Inherit: ~p, Prev: [~p]~n", [?LINE, Inherit, PrevInherit]),
             combine_inherits(Rest, Acc);
-        [{_IndexPrev, [_LinePrev, {_, _, Mod}]}] when Line /= 0 ->
+        [{_IndexPrev, [_LinePrev, {_, _, Mod}]} = PrevInherit] when Names == [], Line /= 0 ->
             %% We have whole module inherit with non-zero line number, we can replace previous
             %% one with line number zero
+            ct:pal("Line: ~p, Inherit: ~p, Prev: [~p]~n", [?LINE, Inherit, PrevInherit]),
             NewAcc = maps:put(Mod, [Inherit], Acc),
             combine_inherits(Rest, NewAcc);
+        [{_IndexPrev, [_LinePrev, {_, _, Mod}]} = PrevInherit] when length(Names) > 0 ->
+            %% We have limited inherit, but there is already whole module inherit in Acc,
+            %% we ignore our inherit
+            ct:pal("Line: ~p, Inherit: ~p, Prev: [~p]~n", [?LINE, Inherit, PrevInherit]),
+            combine_inherits(Rest, Acc);
         _PrevInherits when Names == [] ->
             %% Some names from Mod are already inherited, but we can replace previous inherit with
             %% whole module Inherit
+            ct:pal("Line: ~p, Inherit: ~p, Prev: ~p~n", [?LINE, Inherit, _PrevInherits]),
             NewAcc = maps:put(Mod, [Inherit], Acc),
             combine_inherits(Rest, NewAcc);
         PrevInherits ->
-            %% Some names from Mod are already inherited, we must keep multiple inherits
-            NewAcc = maps:put(Mod, PrevInherits ++ [Inherit], Acc),
+            %% Some names from Mod are already inherited, we must keep multiple inherits, but
+            %% remove names that intersect between previous inherits, and this one
+            PrevInheritsNoDuplicates = remove_duplicated_names_from_prev_inherits(PrevInherits, Names, []),
+            ct:pal("Line: ~p, Inherit: ~p, Prev: ~p, PrevNoDup: ~p~n", [?LINE, Inherit, PrevInherits, PrevInheritsNoDuplicates]),
+            NewAcc = maps:put(Mod, PrevInheritsNoDuplicates ++ [Inherit], Acc),
             combine_inherits(Rest, NewAcc)
+    end.
+
+remove_duplicated_names_from_prev_inherits([], _Names, Acc) ->
+    lists:reverse(Acc);
+remove_duplicated_names_from_prev_inherits([{IndexPrev, [LinePrev, M | NamesPrev]} | Rest], Names, Acc) ->
+    case lists:foldl(fun({_, _, Name}, FAcc) -> lists:keydelete(Name, 3, FAcc) end, NamesPrev, Names) of
+        [] ->
+            %% All names are intersected, none would be left, remove whole inherit
+            remove_duplicated_names_from_prev_inherits(Rest, Names, Acc);
+        NamesPrevNoDup ->
+            %% Only some names are intersected, save everything else, and move on
+            NewAcc = [{IndexPrev, [LinePrev, M | NamesPrevNoDup]} | Acc],
+            remove_duplicated_names_from_prev_inherits(Rest, Names, NewAcc)
     end.
