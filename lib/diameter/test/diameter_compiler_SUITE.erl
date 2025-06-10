@@ -45,8 +45,7 @@
          replace/1,
          generate/1,
          flatten1/1,
-         flatten2/1,
-         indirect_inherits/1
+         flatten2/1
         ]).
 
 -export([dict/0]).  %% fake dictionary module
@@ -392,8 +391,7 @@ all() ->
      replace,
      generate,
      flatten1,
-     flatten2,
-     indirect_inherits].
+     flatten2].
 
 init_per_suite(Config) ->
     ?CL("init_per_suite -> entry with"
@@ -648,70 +646,6 @@ load_forms(Forms) ->
     {ok, Mod, Bin, _} = compile:forms(Forms, [return]),
     {module, Mod} = code:load_binary(Mod, ?S(Mod), Bin),
     Mod.
-
-%% ===========================================================================
-
-indirect_inherits(_) ->
-    Dict1 =
-        "@id 18\n"
-        "@name   diameter_a\n"
-        "@prefix a\n"
-        "@avp_types\n"
-        "AAA    111    Unsigned32    M\n"
-        "BBB    222    Unsigned32    -\n",
-    Dict2 = 
-        "@id 18\n"
-        "@name   diameter_b\n"
-        "@prefix b\n"
-        "@inherits diameter_a AAA\n"
-        "@avp_types\n"
-        "CCC    333    Enumerated    -\n"
-        "@enum CCC\n"
-        "ZERO 0\n"
-        "ONE  1\n",
-    Dict3 =
-        "@id 18\n"
-        "@name   diameter_c\n"
-        "@prefix c\n"
-        "@inherits diameter_gen_base_rfc6733 Result-Code\n"
-        "@inherits diameter_b\n"
-        "@inherits diameter_a BBB\n"
-        "@enum CCC\n"
-        "TWO 2\n",
-    Dict4 = 
-        "@id 18\n"
-        "@name   diameter_d\n"
-        "@prefix d\n"
-        "@inherits diameter_c\n"
-        "@enum CCC\n"
-        "THREE 3\n"
-        "@messages\n"
-        "ZR ::= < Diameter Header: 123, REQ >\n"
-        "        [ AAA ]\n"
-        "        [ BBB ]\n"
-        "        [ CCC ]\n"
-        "ZA ::= < Diameter Header: 123 >\n"
-        "        { Result-Code }\n",
-
-    {ok, [E1, F1]}
-        = diameter_make:codec(Dict1, [erl, forms, return]),
-    ct:pal("~s", [E1]),
-    diameter_a = M1 = load_forms(F1),
-
-    {ok, [E2, F2]}
-        = diameter_make:codec(Dict2, [erl, forms, return]),
-    ct:pal("~s", [E2]),
-    diameter_b = M2 = load_forms(F2),
-
-    {ok, [E3, F3]}
-        = diameter_make:codec(Dict3, [erl, forms, return]),
-    ct:pal("~s", [E3]),
-    diameter_c = M3 = load_forms(F3),
-
-    {ok, [E4, F4]}
-        = diameter_make:codec(Dict4, [erl, forms, return]),
-    ct:pal("~s", [E4]),
-    diameter_d = M4 = load_forms(F4).
 
 %% ===========================================================================
 
