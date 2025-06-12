@@ -64,7 +64,7 @@
 -define(CL(F),    ?CL(F, [])).
 -define(CL(F, A), ?LOG("DCOMP", F, A)).
 
--define(OPTS, [erl, forms, return]).
+-define(OPTS, [hrl, erl, forms, return]).
 -define(OPTS_INHERITS, ?OPTS ++ [indirect_inherits]).
 
 -define(DEFAULT_AVP_NAMES, ['AAA', 'BBB', 'CCC']).
@@ -112,22 +112,22 @@
 -define(ENUM_DICT_A,
     ?AVP_DICT_A ++
     "DDD 444 Enumerated -" ++
-    "@enum DDD ZERO 0 ONE 1"
+    "@enum DDD ZERO 0 ONE 1\n"
 ).
 
 -define(ENUM_DICT_B,
     ?AVP_DICT_B(["@inherits diameter_test_a"]) ++
-    "@enum DDD TWO 2 THREE 3"
+    "@enum DDD TWO 2 THREE 3\n"
 ).
 
 -define(ENUM_DICT_C,
     ?AVP_DICT_C(["@inherits diameter_test_b"]) ++
-    "@enum DDD FOUR 4 FIVE 5"
+    "@enum DDD FOUR 4 FIVE 5\n"
 ).
 
 -define(ENUM_DICT_D,
     ?AVP_DICT_D(["@inherits diameter_test_c"]) ++
-    "@enum DDD SIX 6 SEVEN 7"
+    "@enum DDD SIX 6 SEVEN 7\n"
 ).
 
 %% ===========================================================================
@@ -279,9 +279,8 @@ verify_multiple_limited_imports_same_file(_) ->
     DictA = ?AVP_DICT_A,
     DictB = ?AVP_DICT_B(["@inherits diameter_test_a AAA", "@inherits diameter_test_a AAA"]),
     
-    {ok, [EA, FA]}
-        = diameter_make:codec(DictA, ?OPTS),
-    ct:pal("~s", [EA]),
+    {ok, [HA, EA, FA]} = diameter_make:codec(DictA, ?OPTS),
+    ct:pal("~s~n~s~n", [HA, EA]),
     diameter_test_a = load_forms(FA),
 
     {error, {avp_already_defined, _}} = codec_list_of_options(DictB).
@@ -293,9 +292,8 @@ verify_multiple_whole_dict_imports_same_file(_) ->
     DictA = ?AVP_DICT_A,
     DictB = ?AVP_DICT_B(["@inherits diameter_test_a", "@inherits diameter_test_a"]),
     
-    {ok, [EA, FA]}
-        = diameter_make:codec(DictA, ?OPTS),
-    ct:pal("~s", [EA]),
+    {ok, [HA, EA, FA]} = diameter_make:codec(DictA, ?OPTS),
+    ct:pal("~s~n~s~n", [HA, EA]),
     diameter_test_a = load_forms(FA),
 
     {error, {duplicate_import, _}} = codec_list_of_options(DictB).
@@ -314,8 +312,8 @@ verify_multiple_limited_then_whole_dict_import_same_file(_) ->
     ],
     DictB = ?AVP_DICT_B(Inherits),
 
-    {ok, [EA, FA]} = codec_list_of_options(DictA),
-    ct:pal("~s", [EA]),
+    {ok, [HA, EA, FA]} = codec_list_of_options(DictA),
+    ct:pal("~s~n~s~n", [HA, EA]),
     diameter_test_a = load_forms(FA),
 
     {error, {duplicate_import, _}} = codec_list_of_options(DictB).
@@ -336,26 +334,26 @@ verify_both_limited_imports_are_kept_with_multiple_inherits(_) ->
 
     DictD = ?AVP_DICT_D(["@inherits diameter_test_c"]),
     
-    {ok, [EA, FA]} = codec_list_of_options(DictA),
-    ct:pal("~s", [EA]),
+    {ok, [HA, EA, FA]} = codec_list_of_options(DictA),
+    ct:pal("~s~n~s~n", [HA, EA]),
     diameter_test_a = load_forms(FA),
 
-    {ok, [EB, FB]} = codec_list_of_options(DictB),
-    ct:pal("~s", [EB]),
+    {ok, [HB, EB, FB]} = codec_list_of_options(DictB),
+    ct:pal("~s~n~s~n", [HB, EB]),
     diameter_test_b = load_forms(FB),
 
-    {ok, [EC, FC]} = diameter_make:codec(DictC, ?OPTS_INHERITS),
-    ct:pal("~s", [EC]),
+    {ok, [HC, EC, FC]} = diameter_make:codec(DictC, ?OPTS_INHERITS),
+    ct:pal("~s~n~s~n", [HC, EC]),
     diameter_test_c = MC = load_forms(FC),
     verify_avps(MC, ['AAA', 'BBB'], ['CCC']),
 
-    {ok, [EC_R, FC_R]} = diameter_make:codec(DictC_R, ?OPTS_INHERITS),
-    ct:pal("~s", [EC_R]),
+    {ok, [HC_R, EC_R, FC_R]} = diameter_make:codec(DictC_R, ?OPTS_INHERITS),
+    ct:pal("~s~n~s~n", [HC_R, EC_R]),
     diameter_test_c = MC_R = load_forms(FC_R),
     verify_avps(MC_R, ['AAA', 'BBB'], ['CCC']),
 
-    {ok, [ED, FD]} = diameter_make:codec(DictD, ?OPTS_INHERITS),
-    ct:pal("~s", [ED]),
+    {ok, [HD, ED, FD]} = diameter_make:codec(DictD, ?OPTS_INHERITS),
+    ct:pal("~s~n~s~n", [HD, ED]),
     diameter_test_d = MD = load_forms(FD),
     verify_avps(MD, ['AAA', 'BBB'], ['CCC']).
 
@@ -377,28 +375,28 @@ verify_multiple_limited_imports_are_resolved_when_overlapping(_) ->
 
     DictD = ?AVP_DICT_D(["@inherits diameter_test_c"]),
 
-    {ok, [EA, FA]} = codec_list_of_options(DictA),
-    ct:pal("~s", [EA]),
+    {ok, [HA, EA, FA]} = codec_list_of_options(DictA),
+    ct:pal("~s~n~s~n", [HA, EA]),
     diameter_test_a = MA = load_forms(FA),
     verify_avps(MA, ?DEFAULT_AVP_NAMES),
 
-    {ok, [EB, FB]} = codec_list_of_options(DictB),
-    ct:pal("~s", [EB]),
+    {ok, [HB, EB, FB]} = codec_list_of_options(DictB),
+    ct:pal("~s~n~s~n", [HB, EB]),
     diameter_test_b = MB = load_forms(FB),
     verify_avps(MB, ['AAA', 'BBB']),
 
-    {ok, [EC, FC]} = diameter_make:codec(DictC, ?OPTS_INHERITS),
-    ct:pal("~s", [EC]),
+    {ok, [HC, EC, FC]} = diameter_make:codec(DictC, ?OPTS_INHERITS),
+    ct:pal("~s~n~s~n", [HC, EC]),
     diameter_test_c = MC = load_forms(FC),
     verify_avps(MC, ?DEFAULT_AVP_NAMES),
 
-    {ok, [EC_R, FC_R]} = diameter_make:codec(DictC_R, ?OPTS_INHERITS),
-    ct:pal("~s", [EC_R]),
+    {ok, [HC_R, EC_R, FC_R]} = diameter_make:codec(DictC_R, ?OPTS_INHERITS),
+    ct:pal("~s~n~s~n", [HC_R, EC_R]),
     diameter_test_c = MC_R = load_forms(FC_R),
     verify_avps(MC_R, ?DEFAULT_AVP_NAMES),
 
-    {ok, [ED, FD]} = diameter_make:codec(DictD, ?OPTS_INHERITS),
-    ct:pal("~s", [ED]),
+    {ok, [HD, ED, FD]} = diameter_make:codec(DictD, ?OPTS_INHERITS),
+    ct:pal("~s~n~s~n", [HD, ED]),
     diameter_test_d = MD = load_forms(FD),
     verify_avps(MD, ?DEFAULT_AVP_NAMES).
 
@@ -418,26 +416,26 @@ verify_limited_import_is_replaced_with_whole_dict_import(_) ->
 
     DictD = ?AVP_DICT_D(["@inherits diameter_test_c"]),
     
-    {ok, [EA, FA]} = codec_list_of_options(DictA),
-    ct:pal("~s", [EA]),
+    {ok, [HA, EA, FA]} = codec_list_of_options(DictA),
+    ct:pal("~s~n~s~n", [HA, EA]),
     diameter_test_a = load_forms(FA),
 
-    {ok, [EB, FB]} = codec_list_of_options(DictB),
-    ct:pal("~s", [EB]),
+    {ok, [HB, EB, FB]} = codec_list_of_options(DictB),
+    ct:pal("~s~n~s~n", [HB, EB]),
     diameter_test_b = load_forms(FB),
 
-    {ok, [EC, FC]} = diameter_make:codec(DictC, ?OPTS_INHERITS),
-    ct:pal("~s", [EC]),
+    {ok, [HC, EC, FC]} = diameter_make:codec(DictC, ?OPTS_INHERITS),
+    ct:pal("~s~n~s~n", [HC, EC]),
     diameter_test_c = MC = load_forms(FC),
     verify_avps(MC, ?DEFAULT_AVP_NAMES),
 
-    {ok, [EC_R, FC_R]} = diameter_make:codec(DictC_R, ?OPTS_INHERITS),
-    ct:pal("~s", [EC_R]),
+    {ok, [HC_R, EC_R, FC_R]} = diameter_make:codec(DictC_R, ?OPTS_INHERITS),
+    ct:pal("~s~n~s~n", [HC_R, EC_R]),
     diameter_test_c = MC_R = load_forms(FC_R),
     verify_avps(MC_R, ?DEFAULT_AVP_NAMES),
 
-    {ok, [ED, FD]} = diameter_make:codec(DictD, ?OPTS_INHERITS),
-    ct:pal("~s", [ED]),
+    {ok, [HD, ED, FD]} = diameter_make:codec(DictD, ?OPTS_INHERITS),
+    ct:pal("~s~n~s~n", [HD, ED]),
     diameter_test_d = MD = load_forms(FD),
     verify_avps(MD, ?DEFAULT_AVP_NAMES).
 
@@ -457,26 +455,26 @@ verify_whole_dict_import_is_not_replaced_with_limited_import(_) ->
 
     DictD = ?AVP_DICT_D(["@inherits diameter_test_c"]),
 
-    {ok, [EA, FA]} = codec_list_of_options(DictA),
-    ct:pal("~s", [EA]),
+    {ok, [HA, EA, FA]} = codec_list_of_options(DictA),
+    ct:pal("~s~n~s~n", [HA, EA]),
     diameter_test_a = load_forms(FA),
 
-    {ok, [EB, FB]} = codec_list_of_options(DictB),
-    ct:pal("~s", [EB]),
+    {ok, [HB, EB, FB]} = codec_list_of_options(DictB),
+    ct:pal("~s~n~s~n", [HB, EB]),
     diameter_test_b = load_forms(FB),
 
-    {ok, [EC, FC]} = diameter_make:codec(DictC, ?OPTS_INHERITS),
-    ct:pal("~s", [EC]),
+    {ok, [HC, EC, FC]} = diameter_make:codec(DictC, ?OPTS_INHERITS),
+    ct:pal("~s~n~s~n", [HC, EC]),
     diameter_test_c = MC = load_forms(FC),
     verify_avps(MC, ?DEFAULT_AVP_NAMES),
 
-    {ok, [EC_R, FC_R]} = diameter_make:codec(DictC_R, ?OPTS_INHERITS),
-    ct:pal("~s", [EC_R]),
+    {ok, [HC_R, EC_R, FC_R]} = diameter_make:codec(DictC_R, ?OPTS_INHERITS),
+    ct:pal("~s~n~s~n", [HC_R, EC_R]),
     diameter_test_c = MC_R = load_forms(FC_R),
     verify_avps(MC_R, ?DEFAULT_AVP_NAMES),
 
-    {ok, [ED, FD]} = diameter_make:codec(DictD, ?OPTS_INHERITS),
-    ct:pal("~s", [ED]),
+    {ok, [HD, ED, FD]} = diameter_make:codec(DictD, ?OPTS_INHERITS),
+    ct:pal("~s~n~s~n", [HD, ED]),
     diameter_test_d = MD = load_forms(FD),
     verify_avps(MD, ?DEFAULT_AVP_NAMES).
 
@@ -484,7 +482,7 @@ verify_whole_dict_import_is_not_replaced_with_limited_import(_) ->
 
 verify_enum_values_are_imported_along_the_inheritance_chain(_) ->
     %% Given dictionaries a <-- b <-- c <-- d, when dict a defines an enum with 2 values,
-    %% and then each dict in the chain inherits additional values, the last dict should
+    %% and then each dict in the chain adds additional values, the last dict should
     %% have all enum values inherited.
 
     DictA = ?ENUM_DICT_A,
@@ -492,26 +490,26 @@ verify_enum_values_are_imported_along_the_inheritance_chain(_) ->
     DictC = ?ENUM_DICT_C,
     DictD = ?ENUM_DICT_D,
 
-    {ok, [EA, FA]} = codec_list_of_options(DictA),
-    ct:pal("~s", [EA]),
+    {ok, [HA, EA, FA]} = codec_list_of_options(DictA),
+    ct:pal("~s~n~s~n", [HA, EA]),
     diameter_test_a = MA = load_forms(FA),
     verify_avps(MA, ?DEFAULT_AVP_NAMES ++ ['DDD']),
     verify_enum_values(MA, 'DDD', [0, 1], [2, 3, 4, 5, 6, 7]),
 
-    {ok, [EB, FB]} = codec_list_of_options(DictB),
-    ct:pal("~s", [EB]),
+    {ok, [HB, EB, FB]} = codec_list_of_options(DictB),
+    ct:pal("~s~n~s~n", [HB, EB]),
     diameter_test_b = MB = load_forms(FB),
     verify_avps(MB, ?DEFAULT_AVP_NAMES ++ ['DDD']),
     verify_enum_values(MB, 'DDD', [0, 1, 2, 3], [4, 5, 6, 7]),
 
-    {ok, [EC, FC]} = diameter_make:codec(DictC, ?OPTS_INHERITS),
-    ct:pal("~s", [EC]),
+    {ok, [HC, EC, FC]} = diameter_make:codec(DictC, ?OPTS_INHERITS),
+    ct:pal("~s~n~s~n", [HC, EC]),
     diameter_test_c = MC = load_forms(FC),
     verify_avps(MC, ?DEFAULT_AVP_NAMES ++ ['DDD']),
     verify_enum_values(MC, 'DDD', [0, 1, 2, 3, 4, 5], [6, 7]),
 
-    {ok, [ED, FD]} = diameter_make:codec(DictD, ?OPTS_INHERITS),
-    ct:pal("~s", [ED]),
+    {ok, [HD, ED, FD]} = diameter_make:codec(DictD, ?OPTS_INHERITS),
+    ct:pal("~s~n~s~n", [HD, ED]),
     diameter_test_d = MD = load_forms(FD),
     verify_avps(MD, ?DEFAULT_AVP_NAMES ++ ['DDD']),
     verify_enum_values(MD, 'DDD', [0, 1, 2, 3, 4, 5, 6, 7]).
