@@ -31,7 +31,8 @@
 
 -export([parse/2,
          format_error/1,
-         format/1]).
+         format/1,
+         dict/1]).
 
 -include("diameter_vsn.hrl").
 
@@ -1140,7 +1141,7 @@ avp_vendor_id(Flags, Name, Line, Dict) ->
 %% Import AVPs.
 
 pass3(Dict, Opts) ->
-    import_enums(import_groups(import_avps(import_inherits(insert_codes(Dict), Opts)))).
+    import_enums(import_groups(import_avps(import_inherits(insert_codes(Dict), Opts))), Opts).
 
 %% insert_codes/1
 %%
@@ -1218,17 +1219,15 @@ xi({L, {Name, _Code, _Type, _Flags} = A}, Dict, Mod, Line) ->
 import_groups(Dict) ->
     dict:store(import_groups, import(grouped, Dict), Dict).
 
-import_enums(Dict) ->
-    case import(enum, Dict) of
-        [{_, _}] = Enums ->
+import_enums(Dict, Opts) ->
+    Enums = import(enum, Dict),
+    case lists:member(indirect_inherits, Opts) of
+        true ->
             Inherits = find(inherits, Dict),
-            case inherit_enums_for_defined_avps(Inherits, Enums, dict:fetch(import_avps, Dict)) of
-                [] ->
-                    dict:store(import_enums, Enums, Dict);
-                InheritedEnums ->
-                    dict:store(import_enums, InheritedEnums, Dict)
-            end;
-        Enums ->
+            ImportedAvps = dict:fetch(import_avps, Dict),
+            InheritedEnums = inherit_enums_for_defined_avps(Inherits, Enums, ImportedAvps, []),
+            dict:store(import_enums, Enums ++ InheritedEnums, Dict);
+        false ->
             dict:store(import_enums, Enums, Dict)
     end.
 
@@ -1334,10 +1333,12 @@ enums_and_avps_from_modules(Mods) ->
         {Mod, Enums, Avps}
     end, Mods).
 
-inherit_enums_for_defined_avps(Inherits, [{Mod, Enums}], Avps) ->
+inherit_enums_for_defined_avps(_Inherits, [], _Avps, Acc) ->
+    Acc;
+inherit_enums_for_defined_avps(Inherits, [{Mod, Enums} | Rest], Avps, Acc) ->
     Mods = inherited_modules(Mod, Inherits),
     EnumsAvps = enums_and_avps_from_modules(Mods),
-    lists:filtermap(fun({Name, _Values}) ->
+    Inherited = lists:filtermap(fun({Name, _Values}) ->
         case find_avp(Name, "Enumerated", Avps) of
             [] ->
                 false;
@@ -1349,7 +1350,8 @@ inherit_enums_for_defined_avps(Inherits, [{Mod, Enums}], Avps) ->
                         {true, Enum}
                 end
         end
-    end, Enums).
+    end, Enums),
+    inherit_enums_for_defined_avps(Inherits, Rest, Avps, Acc ++ Inherited).
  
 find_avp(Name, Type, Avps) ->
     lists:filtermap(fun({_Mod, AvpsInModule}) ->
@@ -1375,7 +1377,7 @@ find_avp_in_imported_avps(Avp, ImportedAvps) ->
     lists:search(fun({_Mod, Avps}) -> lists:member(Avp, Avps) end, ImportedAvps).
 
 find_enum_with_name(Name, Enums) ->
-    lists:search(fun({N, _Values}) -> Name == N end, Enums).
+    lists:keysearch(Name, 1, Enums).
 
 %% ===========================================================================
 %% examine/1
