@@ -1315,23 +1315,23 @@ dict(Mod) ->
 % Returns list of inherited modules, without returning module in which avp is defined
 inherited_modules(Mod, Inherits) ->
     lists:filtermap(fun([_, {_, _, M} | _Names]) ->
-        AM = ?A(M),
-        case AM of
-            Mod ->
-                false;
-            _ ->
-                {true, AM}
-        end
-    end, Inherits).
+                            AM = ?A(M),
+                            case AM of
+                                Mod ->
+                                    false;
+                                _ ->
+                                    {true, AM}
+                            end
+                    end, Inherits).
 
 %% enums_and_avps_from_modules/1
 %% Returns a list of {Mod, Enums, Avps} from modules
 enums_and_avps_from_modules(Mods) ->
     lists:map(fun(Mod) ->
-        Enums = enums_from_module(Mod),
-        Avps = imported_avps_from_module(Mod),
-        {Mod, Enums, Avps}
-    end, Mods).
+                      Enums = enums_from_module(Mod),
+                      Avps = imported_avps_from_module(Mod),
+                      {Mod, Enums, Avps}
+              end, Mods).
 
 inherit_enums_for_defined_avps(_Inherits, [], _Avps, Acc) ->
     Acc;
@@ -1339,39 +1339,39 @@ inherit_enums_for_defined_avps(Inherits, [{Mod, Enums} | Rest], Avps, Acc) ->
     Mods = inherited_modules(Mod, Inherits),
     EnumsAvps = enums_and_avps_from_modules(Mods),
     Inherited = lists:filtermap(fun({Name, _Values}) ->
-        case find_avp(Name, "Enumerated", Avps) of
-            [] ->
-                false;
-            [{Name, _Id, _Type, _Flags} = Avp] ->
-                case find_enum_with_same_avp_id(Avp, EnumsAvps) of
-                    [] ->
-                        false;
-                    [Enum] ->
-                        {true, Enum}
-                end
-        end
-    end, Enums),
+                                        case find_avp(Name, "Enumerated", Avps) of
+                                            [] ->
+                                                false;
+                                            [{Name, _Id, _Type, _Flags} = Avp] ->
+                                                case find_enum_with_same_avp_id(Avp, EnumsAvps) of
+                                                    [] ->
+                                                        false;
+                                                    [Enum] ->
+                                                        {true, Enum}
+                                                end
+                                        end
+                                end, Enums),
     inherit_enums_for_defined_avps(Inherits, Rest, Avps, Acc ++ Inherited).
- 
+
 find_avp(Name, Type, Avps) ->
     lists:filtermap(fun({_Mod, AvpsInModule}) ->
-        case lists:keyfind(Name, 1, AvpsInModule) of
-            {Name, _Id, Type, _Flags} = Avp ->
-                {true, Avp};
-            _ ->
-                false
-        end
-    end, Avps).
+                            case lists:keyfind(Name, 1, AvpsInModule) of
+                                {Name, _Id, Type, _Flags} = Avp ->
+                                    {true, Avp};
+                                _ ->
+                                    false
+                            end
+                    end, Avps).
 
 find_enum_with_same_avp_id({Name, _Id, _Type, _Flags} = Avp, EnumsAvps) ->
     lists:filtermap(fun({Mod, Enums, Avps}) ->
-        case {find_avp_in_imported_avps(Avp, Avps), find_enum_with_name(Name, Enums)} of
-            {{value, _}, {value, Enum}} ->
-                {true, {Mod, [Enum]}};
-            _ ->
-                false
-        end
-    end, EnumsAvps).
+                            case {find_avp_in_imported_avps(Avp, Avps), find_enum_with_name(Name, Enums)} of
+                                {{value, _}, {value, Enum}} ->
+                                    {true, {Mod, [Enum]}};
+                                _ ->
+                                    false
+                            end
+                    end, EnumsAvps).
 
 find_avp_in_imported_avps(Avp, ImportedAvps) ->
     lists:search(fun({_Mod, Avps}) -> lists:member(Avp, Avps) end, ImportedAvps).
