@@ -971,8 +971,8 @@ filter(_) ->
 
 filter_imported_enums(Enums) ->
     EnumsWithNames = lists:map(fun(Enum) ->
-        {Enum, get_names_single_enum(Enum)}
-    end, Enums),
+                                       {Enum, get_names_single_enum(Enum)}
+                               end, Enums),
     Modules = get_modules(Enums),
     filter_imported_enums(EnumsWithNames, Modules, []).
 
@@ -1000,8 +1000,8 @@ filter_imported_enums([{{Mod, Es} = Import, Names} | Rest], Modules, Acc) ->
                     %% This module is not the last in inheritance chain, remove intersected names
                     %% from list of imported enums
                     case lists:filter(fun({Name, _V}) ->
-                        sets:is_element(Name, IntersectedNames) == false
-                    end, Es) of
+                                              sets:is_element(Name, IntersectedNames) == false
+                                      end, Es) of
                         [] ->
                             %% We've filtered out all the names, drop the mod completely
                             ct:pal("Mod: ~p, Es: ~p, Intersected: ~p, Latest: false, Filtered: []~n", [Mod, Es, IntersectedNames]),
@@ -1014,13 +1014,6 @@ filter_imported_enums([{{Mod, Es} = Import, Names} | Rest], Modules, Acc) ->
                     end
             end
     end.
-
-% get_enum_names([]) ->
-%     [];
-% get_enum_names([{{_Mod, _Es}, _Names} | _] = Enums) ->
-%     lists:flatmap(fun({{_, _}, N}) -> N end, Enums);
-% get_enum_names([{_Mod, _Es} | _] = Enums) ->
-%     lists:map(fun({_, E}) -> E end, Enums).
 
 get_enum_names(EnumsWithNames) when is_list(EnumsWithNames) ->
     lists:flatmap(fun({_Enum, Names}) -> Names end, EnumsWithNames).
@@ -1035,9 +1028,9 @@ is_mod_latest_in_inheritance_chain(Mod, Modules) ->
     Inherits = orddict:fetch(inherits, diameter_dict_util:dict(Mod)),
     ct:pal("Mod: ~p, Modules: ~p, Inherits: ~p~n", [Mod, Modules, Inherits]),
     Res = lists:any(fun({M, _}) ->
-        Member = lists:member(M, Modules),
-        ct:pal("Mod: ~p, M: ~p, Modules: ~p, Member: ~p~n", [Mod, M, Modules, Member]),
-        Member
-    end, Inherits),
+                            Member = lists:member(M, Modules),
+                            ct:pal("Mod: ~p, M: ~p, Modules: ~p, Member: ~p~n", [Mod, M, Modules, Member]),
+                            Member
+                    end, Inherits),
     ct:pal("Res: ~p~n", [Res]),
     Res == false.
