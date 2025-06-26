@@ -30,6 +30,30 @@ typedef int ErlexecFunction(int, char **, HANDLE);
 #define INI_FILENAME L"erl.ini"
 #define INI_SECTION "erlang"
 #define ERLEXEC_BASENAME L"erlexec.dll"
+#define MAX(x,y)  ((x) > (y) ? (x) : (y))
+
+#define IS_SLASH(a)  ((a) == L'\\' || (a) == L'/')
+
+/* Long paths can either be in the file (?) or the device (.) namespace. UNC
+ * paths are always in the file namespace. */
+#define LP_FILE_PREFIX L"\\\\?\\"
+#define LP_DEV_PREFIX L"\\\\.\\"
+#define LP_UNC_PREFIX (LP_FILE_PREFIX L"UNC\\")
+
+#define LP_PREFIX_SIZE (sizeof(LP_FILE_PREFIX) - sizeof(wchar_t))
+#define LP_PREFIX_LENGTH (LP_PREFIX_SIZE / sizeof(wchar_t))
+
+#define LP_UNC_PREFIX_SIZE (sizeof(LP_UNC_PREFIX) - sizeof(wchar_t))
+#define LP_UNC_PREFIX_LENGTH (LP_UNC_PREFIX_SIZE / sizeof(wchar_t))
+
+#define IS_LONG_PATH(length, data) \
+    ((length) >= LP_PREFIX_LENGTH && \
+         (!memcmp((data), LP_FILE_PREFIX, LP_PREFIX_SIZE) || \
+          !memcmp((data), LP_DEV_PREFIX, LP_PREFIX_SIZE)))
+
+#define IS_LONG_UNC_PATH(length, data) \
+    ((length) >= LP_UNC_PREFIX_LENGTH && \
+         !memcmp((data), LP_UNC_PREFIX, LP_UNC_PREFIX_SIZE))
 
 static void get_parameters(void);
 static void error(char* format, ...);
@@ -172,12 +196,72 @@ static void copy_latest_vsn(wchar_t *latest_vsn, wchar_t *next_vsn)
     return;
 }
 
+static wchar_t *get_full_path(wchar_t *input)
+{
+    DWORD maximum_length, actual_length;
+    int is_long_path, maybe_unc_path;
+    wchar_t *result;
+    wchar_t *path_start;
+
+    maximum_length = GetFullPathNameW(input, 0, NULL, NULL);
+
+    if(maximum_length == 0) {
+        return NULL;
+    }
+
+    maximum_length += MAX(LP_PREFIX_LENGTH, LP_UNC_PREFIX_LENGTH);
+    result = (wchar_t *) malloc(maximum_length * sizeof(wchar_t));
+    actual_length = GetFullPathNameW(input, maximum_length, result, NULL);
+    if(actual_length == 0) {
+        free(result);
+        return NULL;
+    }
+
+    /* The APIs we use have varying path length limits and sometimes
+        * behave differently when given a long-path prefix, so it's simplest
+        * to always use long paths. */
+
+    is_long_path = IS_LONG_PATH(actual_length, result);
+    maybe_unc_path = !memcmp(result, L"\\\\", sizeof(wchar_t) * 2);
+
+    if(maybe_unc_path && !is_long_path) {
+        /* \\localhost\c$\gurka -> \\?\UNC\localhost\c$\gurka
+            *
+            * Note that the length is reduced by 2 as the "\\" is replaced by
+            * the UNC prefix */
+        memmove(result + LP_UNC_PREFIX_LENGTH,
+            &((wchar_t*)result)[2],
+            (actual_length + 1 - 2) * sizeof(wchar_t));
+        memcpy(result, LP_UNC_PREFIX, LP_UNC_PREFIX_SIZE);
+        actual_length += LP_UNC_PREFIX_LENGTH - 2;
+    } else if(!is_long_path) {
+        /* C:\gurka -> \\?\C:\gurka */
+        memmove(result + LP_PREFIX_LENGTH, result,
+            (actual_length + 1) * sizeof(wchar_t));
+        memcpy(result, LP_FILE_PREFIX, LP_PREFIX_SIZE);
+        actual_length += LP_PREFIX_LENGTH;
+    }
+
+    path_start = (wchar_t*)result;
+
+    /* We're removing trailing slashes since quite a few APIs refuse to
+        * work with them, and none require them. We only check the last
+        * character since GetFullPathNameW folds slashes together. */
+    if(IS_SLASH(path_start[actual_length - 1])) {
+        if(path_start[actual_length - 2] != L':') {
+            path_start[actual_length - 1] = L'\0';
+        }
+    }
+
+    return result;
+}
+
 static wchar_t *find_erlexec_dir2(wchar_t *install_dir) 
 {
     /* List install dir and look for latest erts-vsn */
 
     HANDLE dir_handle;	        /* Handle to directory. */
-    wchar_t wildcard[MAX_PATH];	/* Wildcard to search for. */
+    wchar_t *wildcard;	        /* Wildcard to search for. */
     WIN32_FIND_DATAW find_data;  /* Data found by FindFirstFile() or FindNext(). */
     wchar_t latest_vsn[MAX_PATH];
 
@@ -185,9 +269,7 @@ static wchar_t *find_erlexec_dir2(wchar_t *install_dir)
     int length = wcslen(install_dir);
     wchar_t *p;
 
-    if (length+3 >= MAX_PATH) {
-	error("Cannot find erlexec.exe");
-    }
+    wildcard = (wchar_t *) malloc((length * sizeof(wchar_t)) + sizeof(L"\\erts-*"));
 
     wcscpy(wildcard, install_dir);
     p = wildcard+length-1;
@@ -199,8 +281,10 @@ static wchar_t *find_erlexec_dir2(wchar_t *install_dir)
     dir_handle = FindFirstFileW(wildcard, &find_data);
     if (dir_handle == INVALID_HANDLE_VALUE) {
 	/* No erts-vsn found*/
+	free(wildcard);
 	return NULL;
-    }	
+    }
+
     wcscpy(latest_vsn, find_data.cFileName);
 
     /* Find the rest */
@@ -216,6 +300,9 @@ static wchar_t *find_erlexec_dir2(wchar_t *install_dir)
     wcscat(p,L"\\");
     wcscat(p,latest_vsn);
     wcscat(p,L"\\bin");
+
+    free(wildcard);
+
     return p;
 }
 
@@ -224,9 +311,13 @@ static wchar_t *find_erlexec_dir(wchar_t *erlpath)
     /* Assume that the path to erl is absolute and
      * that it is not a symbolic link*/
     
-    wchar_t *dir =_wcsdup(erlpath);
+    wchar_t *dir = _wcsdup(erlpath);
+    wchar_t *unc_dir;
     wchar_t *p;
     wchar_t *p2;
+
+    wchar_t *long_dir;
+    DWORD length;
     
     /* Chop of base name*/
     for (p = dir+wcslen(dir)-1 ;p >= dir && *p != L'\\'; --p)
@@ -234,26 +325,54 @@ static wchar_t *find_erlexec_dir(wchar_t *erlpath)
     *p =L'\0';
     p--;
 
+    length = GetLongPathNameW(dir, NULL, 0);
+    if(length == 0) {
+        error("Cannot find erlexec.dll");
+    }
+    long_dir = (wchar_t *) malloc(length * sizeof(wchar_t));
+    if(GetLongPathNameW(dir, long_dir, length) == 0) {
+        error("Cannot find erlexec.dll");
+    }
+    p = long_dir + wcslen(long_dir) - 1;
+
     /* Check if dir path is like ...\install_dir\erts-vsn\bin */
-    for (;p >= dir && *p != L'\\'; --p)
+    for (;p >= long_dir && *p != L'\\'; --p)
         ;
     p--;
-    for (p2 = p;p2 >= dir && *p2 != '\\'; --p2)
+
+    for (p2 = p;p2 >= long_dir && *p2 != '\\'; --p2)
         ;
     p2++;
     if (wcsncmp(p2, L"erts-", wcslen(L"erts-")) == 0) {
 	p = _wcsdup(dir);
+	free(long_dir);
 	free(dir);
 	return p;
     }
+    
+    free(long_dir);
 
     /* Assume that dir path is like ...\install_dir\bin */
+    unc_dir = get_full_path(dir);
+    free(dir);
+    if(unc_dir == NULL) {
+        error("Cannot find erlexec.dll");
+    }
+
+    /* Chop of base name*/
+    for (p = unc_dir+wcslen(unc_dir)-1 ;p >= unc_dir && *p != L'\\'; --p)
+        ;
+    *p =L'\0';
+    p--;
+    for (;p >= unc_dir && *p != L'\\'; --p)
+        ;
+    p--;
     *++p =L'\0'; /* chop off bin dir */
 
-    p = find_erlexec_dir2(dir);
-    free(dir);
+    p = find_erlexec_dir2(unc_dir);
+    free(unc_dir);
     if (p == NULL) {
-	error("Cannot find erlexec.exe");
+	error("Cannot find erlexec.dll");
     } else {
 	return p;
     }
