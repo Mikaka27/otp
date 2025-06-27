@@ -90,6 +90,9 @@ case $WINCHECK in
     //wsl$/*)
         USEABSPATH=true
         ;;
+    //wsl.localhost/*)
+        USEABSPATH=true
+        ;;
     *)
         USEABSPATH=false
         ;;

@@ -23,6 +23,10 @@
 #
 # Save the command line for debug outputs
 
+set -x
+
+echo "ARGS: $@"
+
 SAVE="$@"
 kernel_libs="kernel32.lib advapi32.lib"
 gdi_libs="gdi32.lib user32.lib comctl32.lib comdlg32.lib shell32.lib"
@@ -99,21 +103,27 @@ if [ $DEBUG_BUILD = true ]; then
 fi
 # Generate a PDB
 linkadd_pdb=""
+echo "OUTPUT_FILENAME: $OUTPUT_FILENAME"
 case "$OUTPUT_FILENAME" in
     *.exe|*.EXE)
-        fn=`echo "$OUTPUT_FILENAME" | sed 's,[eE][xX][eE]$,,g'`;
+        fn=$(echo "$OUTPUT_FILENAME" | sed 's,[eE][xX][eE]$,,g' | sed 's,\\,\\\\,g');
+        #fn=$(echo "$fn" | sed 's,\\,\\\\,g');
         # fn=`w32_path.sh -a -d $fn0`
 	# echo EXE "$OUTPUT_FILENAME" $fn
 	linkadd_pdb="-pdb:\"${fn}pdb\"";;
     *.dll|*.DLL)
-        fn=`echo "$OUTPUT_FILENAME" | sed 's,[dD][lL][lL]$,,g'`;
+        fn=$(echo "$OUTPUT_FILENAME" | sed 's,[dD][lL][lL]$,,g' | sed 's,\\,\\\\,g');
+        # fn=$(echo "$fn" | sed 's,\\,\\\\,g');
         # fn=`w32_path.sh -a -d $fn0`
 	# echo DLL "$OUTPUT_FILENAME" $fn
 	linkadd_pdb="-pdb:\"${fn}pdb\"";;
     "")
-	linkadd_pdb="-pdb:\"a.pdb\"";;
+	fn=`w32_path.sh -a -d a.pdb`;
+	linkadd_pdb="-pdb:\"${fn}\"";;
     *)
-	fn="$OUTPUT_FILENAME"
+	fn=$(echo "$OUTPUT_FILENAME" | sed 's,\\,\\\\,g')
+	echo "OUTPUT_FILENAME: $OUTPUT_FILENAME"
+	echo "fn: $fn"
         # fn=`w32_path.sh -a -d $OUTPUT_FILENAME`
 	# echo * "$OUTPUT_FILENAME" $fn
 	linkadd_pdb="-pdb:\"${fn}.pdb\"";;
@@ -174,6 +184,8 @@ if [ "X$LD_SH_DEBUG_LOG" != "X" ]; then
     echo ld.sh "$SAVE" >>$LD_SH_DEBUG_LOG
     echo link.exe $CMD >>$LD_SH_DEBUG_LOG
 fi
+echo ld.sh "$SAVE"
+echo link.exe $CMD
 eval link.exe "$CMD"  >/tmp/link.exe.${p}.1 2>/tmp/link.exe.${p}.2
 RES=$?
 
