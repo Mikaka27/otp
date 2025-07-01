@@ -1338,7 +1338,7 @@ inherit_enums_for_defined_avps(_Inherits, [], _Avps, Acc) ->
 inherit_enums_for_defined_avps(Inherits, [{Mod, Enums} | Rest], Avps, Acc) ->
     Mods = inherited_modules(Mod, Inherits),
     EnumsAvps = enums_and_avps_from_modules(Mods),
-    Inherited = lists:filtermap(fun({Name, _Values}) ->
+    Inherited = lists:flatten(lists:filtermap(fun({Name, _Values}) ->
                                         case find_avp(Name, "Enumerated", Avps) of
                                             [] ->
                                                 false;
@@ -1346,12 +1346,12 @@ inherit_enums_for_defined_avps(Inherits, [{Mod, Enums} | Rest], Avps, Acc) ->
                                                 case find_enum_with_same_avp_id(Avp, EnumsAvps) of
                                                     [] ->
                                                         false;
-                                                    [Enum] ->
-                                                        {true, Enum}
+                                                    FoundEnums ->
+                                                        {true, FoundEnums}
                                                 end
                                         end
-                                end, Enums),
-    inherit_enums_for_defined_avps(Inherits, Rest, Avps, Acc ++ Inherited).
+                                end, Enums)),
+    inherit_enums_for_defined_avps(Inherits, Rest, Avps, lists:reverse(Inherited) ++ Acc).
 
 find_avp(Name, Type, Avps) ->
     lists:filtermap(fun({_Mod, AvpsInModule}) ->
