@@ -591,7 +591,6 @@ custom(codecs, AvpName, Type) ->
 %%% ------------------------------------------------------------------------
 
 f_enumerated_avp(ParseD) ->
-    ct:pal("ParseD: ~p~n", [ParseD]),
     {?function, enumerated_avp, 3, enumerated_avp(ParseD) ++ [?BADARG(3)]}.
 
 enumerated_avp(ParseD) ->
