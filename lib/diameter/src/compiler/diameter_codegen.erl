@@ -596,12 +596,18 @@ f_enumerated_avp(ParseD) ->
 
 enumerated_avp(ParseD) ->
     Enums = get_value(enum, ParseD),
-    ImportedEnums = get_value(import_enums, ParseD),
-    Filtered = filter_imported_enums(ImportedEnums),
-    ct:pal("ImportedEnums: ~p~nFiltered: ~p~n", [ImportedEnums, Filtered]),
-    lists:flatmap(fun cs_enumerated_avp/1, Enums)
-        ++ lists:flatmap(fun({M,Es}) -> enumerated_avp(M, Es, Enums) end,
-                         get_value(import_enums, ParseD)).
+    CurrentEnums = lists:flatmap(fun cs_enumerated_avp/1, Enums),
+    ImportedEnums = lists:flatmap(fun({M,Es}) -> enumerated_avp(M, Es, Enums) end,
+                         get_value(import_enums, ParseD)),
+    FilteredEnums = lists:foldl(fun({clause, Id, _, _, _} = Elem, AccIn) ->
+        case lists:keymember(Id, 2, AccIn) of
+            true ->
+                lists:keyreplace(Id, 2, AccIn, Elem);
+            false ->
+                AccIn ++ [Elem]
+        end
+    end, [], ImportedEnums),
+    CurrentEnums ++ FilteredEnums.
 
 enumerated_avp(Mod, Es, Enums) ->
     lists:flatmap(fun({N,_}) ->
@@ -965,72 +971,72 @@ filter({function, _, Name, _, _} = T) ->
 filter(_) ->
     [].
 
-%% Only retain imported enums from the last module in the
-%% inheritance chain when generating calls to another modules,
-%% others will be handled by modules below this one
+% %% Only retain imported enums from the last module in the
+% %% inheritance chain when generating calls to another modules,
+% %% others will be handled by modules below this one
 
-filter_imported_enums(Enums) ->
-    EnumsWithNames = lists:map(fun(Enum) ->
-                                       {Enum, get_names_single_enum(Enum)}
-                               end, Enums),
-    Modules = get_modules(Enums),
-    filter_imported_enums(EnumsWithNames, Modules, []).
+% filter_imported_enums(Enums) ->
+%     EnumsWithNames = lists:map(fun(Enum) ->
+%                                        {Enum, get_names_single_enum(Enum)}
+%                                end, Enums),
+%     Modules = get_modules(Enums),
+%     filter_imported_enums(EnumsWithNames, Modules, []).
 
-filter_imported_enums([], _Modules, Acc) ->
-    lists:reverse(Acc);
-filter_imported_enums([{{Mod, Es} = Import, Names} | Rest], Modules, Acc) ->
-    RestNames = ?Sets(get_enum_names(Rest)),
-    case sets:intersection(?Sets(Names), RestNames) of
-        [] ->
-            %% There are no common enums between Mod and rest of imported modules
-            %% there is nothing to do, we can move on
-            ct:pal("Mod: ~p, Es: ~p, Intersected: []~n", [Mod, Es]),
-            NewAcc = [Import | Acc],
-            filter_imported_enums(Rest, Modules, NewAcc);
-        IntersectedNames ->
-            %% Some enums are intersected between imported modules
-            %% check if Mod is latest in inheritance chain
-            case is_mod_latest_in_inheritance_chain(Mod, Modules) of
-                true ->
-                    %% Don't do anything, this module is the last one, it should stay as is
-                    ct:pal("Mod: ~p, Es: ~p, Intersected: ~p, Latest: true~n", [Mod, Es, IntersectedNames]),
-                    NewAcc = [Import | Acc],
-                    filter_imported_enums(Rest, Modules, NewAcc);
-                false ->
-                    %% This module is not the last in inheritance chain, remove intersected names
-                    %% from list of imported enums
-                    case lists:filter(fun({Name, _V}) ->
-                                              sets:is_element(Name, IntersectedNames) == false
-                                      end, Es) of
-                        [] ->
-                            %% We've filtered out all the names, drop the mod completely
-                            ct:pal("Mod: ~p, Es: ~p, Intersected: ~p, Latest: false, Filtered: []~n", [Mod, Es, IntersectedNames]),
-                            filter_imported_enums(Rest, Modules, Acc);
-                        EsFiltered ->
-                            %% Some names are still left, save modified enum
-                            ct:pal("Mod: ~p, Es: ~p, Intersected: ~p, Latest: false, Filtered: ~p~n", [Mod, Es, IntersectedNames, EsFiltered]),
-                            NewAcc = [{Mod, EsFiltered} | Acc],
-                            filter_imported_enums(Rest, Modules, NewAcc)
-                    end
-            end
-    end.
+% filter_imported_enums([], _Modules, Acc) ->
+%     lists:reverse(Acc);
+% filter_imported_enums([{{Mod, Es} = Import, Names} | Rest], Modules, Acc) ->
+%     RestNames = ?Sets(get_enum_names(Rest)),
+%     case sets:intersection(?Sets(Names), RestNames) of
+%         [] ->
+%             %% There are no common enums between Mod and rest of imported modules
+%             %% there is nothing to do, we can move on
+%             ct:pal("Mod: ~p, Es: ~p, Intersected: []~n", [Mod, Es]),
+%             NewAcc = [Import | Acc],
+%             filter_imported_enums(Rest, Modules, NewAcc);
+%         IntersectedNames ->
+%             %% Some enums are intersected between imported modules
+%             %% check if Mod is latest in inheritance chain
+%             case is_mod_latest_in_inheritance_chain(Mod, Modules) of
+%                 true ->
+%                     %% Don't do anything, this module is the last one, it should stay as is
+%                     ct:pal("Mod: ~p, Es: ~p, Intersected: ~p, Latest: true~n", [Mod, Es, IntersectedNames]),
+%                     NewAcc = [Import | Acc],
+%                     filter_imported_enums(Rest, Modules, NewAcc);
+%                 false ->
+%                     %% This module is not the last in inheritance chain, remove intersected names
+%                     %% from list of imported enums
+%                     case lists:filter(fun({Name, _V}) ->
+%                                               sets:is_element(Name, IntersectedNames) == false
+%                                       end, Es) of
+%                         [] ->
+%                             %% We've filtered out all the names, drop the mod completely
+%                             ct:pal("Mod: ~p, Es: ~p, Intersected: ~p, Latest: false, Filtered: []~n", [Mod, Es, IntersectedNames]),
+%                             filter_imported_enums(Rest, Modules, Acc);
+%                         EsFiltered ->
+%                             %% Some names are still left, save modified enum
+%                             ct:pal("Mod: ~p, Es: ~p, Intersected: ~p, Latest: false, Filtered: ~p~n", [Mod, Es, IntersectedNames, EsFiltered]),
+%                             NewAcc = [{Mod, EsFiltered} | Acc],
+%                             filter_imported_enums(Rest, Modules, NewAcc)
+%                     end
+%             end
+%     end.
 
-get_enum_names(EnumsWithNames) when is_list(EnumsWithNames) ->
-    lists:flatmap(fun({_Enum, Names}) -> Names end, EnumsWithNames).
+% get_enum_names(EnumsWithNames) when is_list(EnumsWithNames) ->
+%     lists:flatmap(fun({_Enum, Names}) -> Names end, EnumsWithNames).
 
-get_names_single_enum({_Mod, Es}) ->
-    lists:map(fun({N, _V}) -> N end, Es).
+% get_names_single_enum({_Mod, Es}) ->
+%     lists:map(fun({N, _V}) -> N end, Es).
 
-get_modules(Enums) ->
-    lists:map(fun({Mod, _Es}) -> ?S(Mod) end, Enums).
+% get_modules(Enums) ->
+%     lists:map(fun({Mod, _Es}) -> ?S(Mod) end, Enums).
 
-is_mod_latest_in_inheritance_chain(Mod, Modules) ->
-    Inherits = orddict:fetch(inherits, diameter_dict_util:dict(Mod)),
-    ct:pal("Mod: ~p, Modules: ~p, Inherits: ~p~n", [Mod, Modules, Inherits]),
-    Res = lists:any(fun({M, _}) ->
-                            Member = lists:member(M, Modules),
-                            ct:pal("Mod: ~p, M: ~p, Modules: ~p, Member: ~p~n", [Mod, M, Modules, Member]),
-                            Member
-                    end, Inherits),
-    ct:pal("Res: ~p~n", [Res]),
-    Res == false.
+% is_mod_latest_in_inheritance_chain(Mod, Modules) ->
+%     Inherits = orddict:fetch(inherits, diameter_dict_util:dict(Mod)),
+%     ct:pal("Mod: ~p, Modules: ~p, Inherits: ~p~n", [Mod, Modules, Inherits]),
+%     Res = lists:any(fun({M, _}) ->
+%                             Member = lists:member(M, Modules),
+%                             ct:pal("Mod: ~p, M: ~p, Modules: ~p, Member: ~p~n", [Mod, M, Modules, Member]),
+%                             Member
+%                     end, Inherits),
+%     ct:pal("Res: ~p~n", [Res]),
+%     Res == false.
