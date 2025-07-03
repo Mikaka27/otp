@@ -31,8 +31,7 @@
 
 -export([parse/2,
          format_error/1,
-         format/1,
-         dict/1]).
+         format/1]).
 
 -include("diameter_vsn.hrl").
 
@@ -1297,6 +1296,10 @@ imported_avps_from_module(Mod) ->
 enums_from_module(Mod) ->
     orddict:fetch(enum, dict(Mod)).
 
+%% inherits from module/1
+inherits_from_module(Mod) ->
+    orddict:fetch(inherits, dict(Mod)).
+
 dict(Mod) ->
     try Mod:dict() of
         [?VERSION | Dict] ->
@@ -1338,20 +1341,26 @@ inherit_enums_for_defined_avps(_Inherits, [], _Avps, Acc) ->
 inherit_enums_for_defined_avps(Inherits, [{Mod, Enums} | Rest], Avps, Acc) ->
     Mods = inherited_modules(Mod, Inherits),
     EnumsAvps = enums_and_avps_from_modules(Mods),
-    Inherited = lists:flatten(lists:filtermap(fun({Name, _Values}) ->
-                                        case find_avp(Name, "Enumerated", Avps) of
-                                            [] ->
-                                                false;
-                                            [{Name, _Id, _Type, _Flags} = Avp] ->
-                                                case find_enum_with_same_avp_id(Avp, EnumsAvps) of
-                                                    [] ->
-                                                        false;
-                                                    FoundEnums ->
-                                                        {true, FoundEnums}
-                                                end
-                                        end
-                                end, Enums)),
-    inherit_enums_for_defined_avps(Inherits, Rest, Avps, lists:reverse(Inherited) ++ Acc).
+    Inherited = lists:foldl(fun({Name, _Values}, AccIn) ->
+                                    case find_avp(Name, "Enumerated", Avps) of
+                                        [] ->
+                                            AccIn;
+                                        [{Name, _Id, _Type, _Flags} = Avp] ->
+                                            case find_enum_with_same_avp_id(Avp, EnumsAvps) of
+                                                [] ->
+                                                    AccIn;
+                                                FoundEnums ->
+                                                    AccIn ++ FoundEnums
+                                            end
+                                    end
+                            end, [], Enums),
+    %% Sort according to inheritance chain, this is important in order to generate
+    %% correct encode/decode code for inherited enums
+    Sorted = lists:sort(fun({A, _}, {B, _}) ->
+        InheritsFromModule = inherits_from_module(B),
+        lists:any(fun({StringMod, _}) -> ?A(StringMod) == A end, InheritsFromModule)
+    end, Acc ++ Inherited),
+    inherit_enums_for_defined_avps(Inherits, Rest, Avps, Sorted).
 
 find_avp(Name, Type, Avps) ->
     lists:filtermap(fun({_Mod, AvpsInModule}) ->
