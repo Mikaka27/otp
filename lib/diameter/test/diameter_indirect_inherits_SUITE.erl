@@ -49,7 +49,8 @@
          verify_multiple_limited_imports_are_resolved_when_overlapping/1,
          verify_limited_import_is_replaced_with_whole_dict_import/1,
          verify_whole_dict_import_is_not_replaced_with_limited_import/1,
-         verify_enum_values_are_imported_along_the_inheritance_chain/1
+         verify_enum_values_are_imported_along_the_inheritance_chain/1,
+         verify_enum_values_are_imported_in_order_if_there_are_additional_enums_along_the_chain/1
         ]).
 
 -include("diameter_util.hrl").
@@ -74,7 +75,10 @@
         'AAA' -> {111, 64, undefined};
         'BBB' -> {222, 0, undefined};
         'CCC' -> {333, 0, undefined};
-        'DDD' -> {444, 0, undefined}
+        'DDD' -> {444, 0, undefined};
+        'EEE' -> {555, 0, undefined};
+        'FFF' -> {666, 0, undefined};
+        'GGG' -> {777, 0, undefined}
     end
 ).
 
@@ -111,7 +115,7 @@
 
 -define(ENUM_DICT_A,
     ?AVP_DICT_A ++
-    "DDD 444 Enumerated -" ++
+    "DDD 444 Enumerated -\n" ++
     "@enum DDD ZERO 0 ONE 1\n"
 ).
 
@@ -120,14 +124,32 @@
     "@enum DDD TWO 2 THREE 3\n"
 ).
 
+-define(ENUM_DICT_B(Avps, Inherits, Enums),
+    ?DICT("diameter_test_b", "d") ++
+    "@avp_types\n" ++
+    lists:join("\n", Avps ++ Inherits ++ Enums)
+).
+
 -define(ENUM_DICT_C,
     ?AVP_DICT_C(["@inherits diameter_test_b"]) ++
     "@enum DDD FOUR 4 FIVE 5\n"
 ).
 
+-define(ENUM_DICT_C(Avps, Inherits, Enums),
+    ?DICT("diameter_test_c", "c") ++
+    "@avp_types\n" ++
+    lists:join("\n", Avps ++ Inherits ++ Enums)
+).
+
 -define(ENUM_DICT_D,
     ?AVP_DICT_D(["@inherits diameter_test_c"]) ++
     "@enum DDD SIX 6 SEVEN 7\n"
+).
+
+-define(ENUM_DICT_D(Avps, Inherits, Enums),
+    ?DICT("diameter_test_d", "d") ++
+    "@avp_types\n" ++
+    lists:join("\n", Avps ++ Inherits ++ Enums)
 ).
 
 %% ===========================================================================
@@ -143,8 +165,8 @@ all() ->
      verify_multiple_limited_imports_are_resolved_when_overlapping,
      verify_limited_import_is_replaced_with_whole_dict_import,
      verify_whole_dict_import_is_not_replaced_with_limited_import,
-     verify_enum_values_are_imported_along_the_inheritance_chain
-     ].
+     verify_enum_values_are_imported_along_the_inheritance_chain,
+     verify_enum_values_are_imported_in_order_if_there_are_additional_enums_along_the_chain].
 
 init_per_suite(Config) ->
     ?CL("init_per_suite -> entry with"
@@ -513,3 +535,65 @@ verify_enum_values_are_imported_along_the_inheritance_chain(_) ->
     diameter_test_d = MD = load_forms(FD),
     verify_avps(MD, ?DEFAULT_AVP_NAMES ++ ['DDD']),
     verify_enum_values(MD, 'DDD', [0, 1, 2, 3, 4, 5, 6, 7]).
+
+%% ===========================================================================
+
+verify_enum_values_are_imported_in_order_if_there_are_additional_enums_along_the_chain(_) ->
+    %% Given dictionaries a <-- b <-- c <-- d, when dict a defined an enum with 2 values,
+    %% and then each dict in the chain adds additional values, and also adds additional enum avps
+    %% the last dict should have all enum values inherited from all imported avps, if
+    %% enum was not imported along the chain, it should not be present
+    
+    DictA = ?ENUM_DICT_A,
+
+    AvpsB = ["EEE 555 Enumerated -", "FFF 666 Enumerated -"],
+    InheritsB = ["@inherits diameter_test_a"],
+    EnumsB = ["@enum EEE A 0 B 1", "@enum DDD TWO 2 THREE 3", "@enum FFF Z 100 Y 99"],
+    DictB = ?ENUM_DICT_B(AvpsB, InheritsB, EnumsB),
+
+    AvpsC = ["GGG 777 Enumerated -"],
+    InheritsC = ["@inherits diameter_test_b FFF"],
+    EnumsC = ["@enum DDD FOUR 4 FIVE 5", "@enum FFF X 98 W 97"],
+    DictC = ?ENUM_DICT_C(AvpsC, InheritsC, EnumsC),
+
+    AvpsD = [],
+    InheritsD = ["@inherits diameter_test_c GGG"],
+    EnumsD = ["@enum DDD SIX 6 SEVEN 7", "@enum FFF V 96 U 95", "@enum GGG TEN 10"],
+    DictD = ?ENUM_DICT_D(AvpsD, InheritsD, EnumsD),
+
+    {ok, [HA, EA, FA]} = codec_list_of_options(DictA),
+    ct:pal("~s~n~s~n", [HA, EA]),
+    diameter_test_a = MA = load_forms(FA),
+    verify_avps(MA, ?DEFAULT_AVP_NAMES ++ ['DDD'], ['EEE', 'FFF', 'GGG']),
+    verify_enum_values(MA, 'DDD', [0, 1], [2, 3, 4, 5, 6, 7]),
+    verify_enum_values(MA, 'EEE', [], [0, 1]),
+    verify_enum_values(MA, 'FFF', [], [100, 99, 98, 97, 96, 95]),
+    verify_enum_values(MA, 'GGG', [], [10]),
+
+    {ok, [HB, EB, FB]} = codec_list_of_options(DictB),
+    ct:pal("~s~n~s~n", [HB, EB]),
+    diameter_test_b = MB = load_forms(FB),
+    verify_avps(MB, ?DEFAULT_AVP_NAMES ++ ['DDD', 'EEE', 'FFF'], ['GGG']),
+    verify_enum_values(MB, 'DDD', [0, 1, 2, 3], [4, 5, 6, 7]),
+    verify_enum_values(MB, 'EEE', [0, 1]),
+    verify_enum_values(MB, 'FFF', [100, 99], [98, 97, 96, 95]),
+    verify_enum_values(MB, 'GGG', [], [10]),
+
+    {ok, [HC, EC, FC]} = diameter_make:codec(DictC, ?OPTS_INHERITS),
+    ct:pal("~s~n~s~n", [HC, EC]),
+    diameter_test_c = MC = load_forms(FC),
+    verify_avps(MC, ?DEFAULT_AVP_NAMES ++ ['DDD', 'FFF', 'GGG'], ['EEE']),
+    verify_enum_values(MC, 'DDD', [0, 1, 2, 3, 4, 5], [6, 7]),
+    verify_enum_values(MC, 'EEE', [], [0, 1]),
+    verify_enum_values(MC, 'FFF', [100, 99, 98, 97], [96, 95]),
+    verify_enum_values(MC, 'GGG', [], [10]),
+
+    {ok, [HD, ED, FD]} = diameter_make:codec(DictD, ?OPTS_INHERITS),
+    ct:pal("~s~n~s~n", [HD, ED]),
+    diameter_test_d = MD = load_forms(FD),
+    verify_avps(MD, ?DEFAULT_AVP_NAMES ++ ['DDD', 'FFF'], ['EEE']),
+    verify_enum_values(MD, 'DDD', [0, 1, 2, 3, 4, 5, 6, 7]),
+    verify_enum_values(MD, 'EEE', [], [0, 1]),
+    verify_enum_values(MD, 'FFF', [100, 99, 98, 97, 96, 95]),
+    verify_enum_values(MD, 'GGG', [10]).
+
