@@ -643,6 +643,7 @@ flatten2(_) ->
 
 enum_inheritance_bug(_) ->
     Dict1 =
+        "@id 17\n"
         "@name diameter_test1\n"
         "@prefix diameter_test1\n"
         "@vendor 666 test\n"
@@ -651,9 +652,16 @@ enum_inheritance_bug(_) ->
         "@enum A1 ONE 1"
         "@end ignored\n",
     Dict2 =
+        "@id 17\n"
         "@name diameter_test2\n"
         "@prefix diameter_test2\n"
-        "@inherits diameter_test1 A1\n",
+        "@inherits diameter_test1 A1\n"
+        "@messages\n"
+        "AR ::= < Diameter Header: 123, REQ >\n"
+        "        { A1 }\n"
+        "        [ AVP ]\n"
+        "AA ::= < Diameter Header: 123 >\n"
+        "      * [ AVP ]\n",
     
     {ok, [E1, F1]} = diameter_make:codec(Dict1, [erl, forms, return]),
     ct:pal("~s~n", [E1]),
@@ -661,9 +669,9 @@ enum_inheritance_bug(_) ->
 
     {'A1', 'Enumerated'} = M1:avp_name(1001, 666),
     {1001, 128, 666} = M1:avp_header('A1'),
-    <<0, 0, 0, 0>> = M1:empty_value('A1', maps:new()),
-    <<0, 0, 0, 1>> = M1:avp(encode, 1, 'A1', maps:new()),
-    1 = M1:avp(decode, <<0, 0, 0, 1>>, 'A1', maps:new()),
+    <<0, 0, 0, 0>> = M1:empty_value('A1', #{module => M1}),
+    <<0, 0, 0, 1>> = M1:avp(encode, 1, 'A1', #{module => M1}),
+    1 = M1:avp(decode, <<0, 0, 0, 1>>, 'A1', #{module => M1}),
     <<0, 0, 0, 1>> = M1:enumerated_avp(encode, 'A1', 1),
     1 = M1:enumerated_avp(decode, 'A1', <<0, 0, 0, 1>>),
 
@@ -673,11 +681,9 @@ enum_inheritance_bug(_) ->
 
     {'A1', 'Enumerated'} = M2:avp_name(1001, 666),
     {1001, 128, 666} = M2:avp_header('A1'),
-    <<0, 0, 0, 0>> = M2:empty_value('A1', maps:new()),
-    <<0, 0, 0, 1>> = M2:avp(encode, 1, 'A1', maps:new()),
-    1 = M2:avp(decode, <<0, 0, 0, 1>>, 'A1', maps:new()),
-    <<0, 0, 0, 1>> = M2:enumerated_avp(encode, 'A1', 1),
-    1 = M2:enumerated_avp(decode, 'A1', <<0, 0, 0, 1>>).
+    <<0, 0, 0, 0>> = M2:empty_value('A1', #{module => M2}),
+    <<0, 0, 0, 1>> = M2:avp(encode, 1, 'A1', #{module => M2}),
+    1 = M2:avp(decode, <<0, 0, 0, 1>>, 'A1', #{module => M2}).
 
 'A1'(T, 'Unsigned32', Ref, _Opts) ->
     {T, Ref}.
