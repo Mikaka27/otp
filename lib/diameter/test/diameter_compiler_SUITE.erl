@@ -45,7 +45,8 @@
          replace/1,
          generate/1,
          flatten1/1,
-         flatten2/1
+         flatten2/1,
+         enum_inheritance_bug/1
         ]).
 
 -export([dict/0]).  %% fake dictionary module
@@ -391,7 +392,8 @@ all() ->
      replace,
      generate,
      flatten1,
-     flatten2].
+     flatten2,
+     enum_inheritance_bug].
 
 init_per_suite(Config) ->
     ?CL("init_per_suite -> entry with"
@@ -635,6 +637,47 @@ flatten2(_) ->
                         Ref <- [make_ref()],
                         RC <- [M:avp(T, Ref, A, #{module => M})],
                         RC /= {T, Ref}].
+
+%% ===========================================================================
+%% enum_inheritance_bug/1
+
+enum_inheritance_bug(_) ->
+    Dict1 =
+        "@name diameter_test1\n"
+        "@prefix diameter_test1\n"
+        "@vendor 666 test\n"
+        "@avp_types\n"
+        "A1 1001 Enumerated V\n"
+        "@enum A1 ONE 1"
+        "@end ignored\n",
+    Dict2 =
+        "@name diameter_test2\n"
+        "@prefix diameter_test2\n"
+        "@inherits diameter_test1 A1\n",
+    
+    {ok, [E1, F1]} = diameter_make:codec(Dict1, [erl, forms, return]),
+    ct:pal("~s~n", [E1]),
+    diameter_test1 = M1 = load_forms(F1),
+
+    {'A1', 'Enumerated'} = M1:avp_name(1001, 666),
+    {1001, 128, 666} = M1:avp_header('A1'),
+    <<0, 0, 0, 0>> = M1:empty_value('A1', maps:new()),
+    <<0, 0, 0, 1>> = M1:avp(encode, 1, 'A1', maps:new()),
+    1 = M1:avp(decode, <<0, 0, 0, 1>>, 'A1', maps:new()),
+    <<0, 0, 0, 1>> = M1:enumerated_avp(encode, 'A1', 1),
+    1 = M1:enumerated_avp(decode, 'A1', <<0, 0, 0, 1>>),
+
+    {ok, [E2, F2]} = diameter_make:codec(Dict2, [erl, forms, return]),
+    ct:pal("~s~n", [E2]),
+    diameter_test2 = M2 = load_forms(F2),
+
+    {'A1', 'Enumerated'} = M2:avp_name(1001, 666),
+    {1001, 128, 666} = M2:avp_header('A1'),
+    <<0, 0, 0, 0>> = M2:empty_value('A1', maps:new()),
+    <<0, 0, 0, 1>> = M2:avp(encode, 1, 'A1', maps:new()),
+    1 = M2:avp(decode, <<0, 0, 0, 1>>, 'A1', maps:new()),
+    <<0, 0, 0, 1>> = M2:enumerated_avp(encode, 'A1', 1),
+    1 = M2:enumerated_avp(decode, 'A1', <<0, 0, 0, 1>>).
 
 'A1'(T, 'Unsigned32', Ref, _Opts) ->
     {T, Ref}.
