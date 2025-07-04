@@ -281,7 +281,7 @@ verify_enum_encode_decode_calls_correct_module_in_inheritance_chain(_) ->
     diameter_test_c = load_forms(FC),
     RC = get_enumerated_avps_for_remote_calls(FC),
     [{remote, _, {_, _, diameter_test_b}, {_, _, enumerated_avp}}] = maps:get('DDD', RC),
-    [{remote, _, {_, _, diameter_test_b}, {_, _, enumerated_avp}}] = maps:get('EEE', RC),
+    undefined = maps:get('EEE', RC, undefined),
     [{remote, _, {_, _, diameter_test_b}, {_, _, enumerated_avp}}] = maps:get('FFF', RC),
 
     {ok, [HD, ED, FD]} = diameter_make:codec(DictD, ?OPTS_INHERITS),
@@ -289,9 +289,9 @@ verify_enum_encode_decode_calls_correct_module_in_inheritance_chain(_) ->
     diameter_test_d = load_forms(FD),
     RD = get_enumerated_avps_for_remote_calls(FD),
     [{remote, _, {_, _, diameter_test_c}, {_, _, enumerated_avp}}] = maps:get('DDD', RD),
-    [{remote, _, {_, _, diameter_test_b}, {_, _, enumerated_avp}}] = maps:get('EEE', RD),
+    undefined = maps:get('EEE', RD, undefined),
     [{remote, _, {_, _, diameter_test_c}, {_, _, enumerated_avp}}] = maps:get('FFF', RD),
-    [{remote, _, {_, _, diameter_test_c}, {_, _, enumerated_avp}}] = maps:get('GGG', RD).
+    undefined = maps:get('GGG', RD, undefined).
 
 %% ===========================================================================
 
