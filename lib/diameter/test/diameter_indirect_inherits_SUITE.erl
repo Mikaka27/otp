@@ -69,6 +69,8 @@
 -define(OPTS_INHERITS, ?OPTS ++ [indirect_inherits]).
 
 -define(DEFAULT_AVP_NAMES, ['AAA', 'BBB', 'CCC']).
+-define(DEFAULT_AVP_NAMES_STR, ["AAA", "BBB", "CCC"]).
+-define(DEFAULT_AVPS, ["AAA 111 Unsigned32 M", "BBB 222 Unsigned32 -", "CCC 333 Unsigned64 -"]).
 
 -define(AVP_HEADER(Name),
     case Name of
@@ -82,74 +84,71 @@
     end
 ).
 
--define(DICT(Name, Prefix),
-    "@id 18\n"
-    "@name " Name "\n"
-    "@prefix " Prefix "\n"
-).
-
--define(AVP_DICT_A, ?AVP_DICT_A([
-    "AAA 111 Unsigned32 M",
-    "BBB 222 Unsigned32 -",
-    "CCC 333 Unsigned64 -"])).
+-define(AVP_DICT_A, ?AVP_DICT_A(?DEFAULT_AVPS)).
 -define(AVP_DICT_A(Avps),
-    ?DICT("diameter_test_a", "a")
-    "@avp_types\n" ++
-    lists:join("\n", Avps)
+    dict("diameter_test_a", "a", Avps) ++
+    get_messages_from_avps("A", "1", Avps)
 ).
 
 -define(AVP_DICT_B(Inherits),
-    ?DICT("diameter_test_b", "b") ++
-    lists:join("\n", Inherits)
+    dict("diameter_test_b", "b", [], Inherits) ++
+    get_messages_from_avps("B", "2", Inherits)
 ).
 
--define(AVP_DICT_C(Inherits),
-    ?DICT("diameter_test_c", "c") ++
-    lists:join("\n", Inherits)
+-define(AVP_DICT_C(Inherits), ?AVP_DICT_C(Inherits, Inherits)).
+-define(AVP_DICT_C(Inherits, KnownAvps),
+    dict("diameter_test_c", "c", [], Inherits) ++
+    get_messages_from_avps("C", "3", KnownAvps)
 ).
 
--define(AVP_DICT_D(Inherits),
-    ?DICT("diameter_test_d", "d") ++
-    lists:join("\n", Inherits)
+-define(AVP_DICT_D(Inherits), ?AVP_DICT_D(Inherits, Inherits)).
+-define(AVP_DICT_D(Inherits, KnownAvps),
+    dict("diameter_test_d", "d", [], Inherits) ++
+    get_messages_from_avps("D", "4", KnownAvps)
 ).
 
 -define(ENUM_DICT_A,
-    ?AVP_DICT_A ++
+    dict("diameter_test_a", "a", ?DEFAULT_AVPS) ++
     "DDD 444 Enumerated -\n" ++
-    "@enum DDD ZERO 0 ONE 1\n"
+    "@enum DDD ZERO 0 ONE 1\n" ++
+    get_messages_from_avps("A", "1", ["AAA", "BBB", "CCC", "DDD"])
 ).
 
 -define(ENUM_DICT_B,
-    ?AVP_DICT_B(["@inherits diameter_test_a"]) ++
-    "@enum DDD TWO 2 THREE 3\n"
+    dict("diameter_test_b", "b", [], ["@inherits diameter_test_a"]) ++
+    "@enum DDD TWO 2 THREE 3\n" ++
+    get_messages_from_avps("B", "2", ["AAA", "BBB", "CCC", "DDD"])
 ).
 
 -define(ENUM_DICT_B(Avps, Inherits, Enums),
-    ?DICT("diameter_test_b", "d") ++
-    "@avp_types\n" ++
-    lists:join("\n", Avps ++ Inherits ++ Enums)
+    dict("diameter_test_b", "d", Avps, Inherits) ++
+    lists:join("\n", Enums) ++
+    get_messages_from_avps("B", "2", Avps)
 ).
 
 -define(ENUM_DICT_C,
-    ?AVP_DICT_C(["@inherits diameter_test_b"]) ++
-    "@enum DDD FOUR 4 FIVE 5\n"
+    dict("diameter_test_c", "c", [], ["@inherits diameter_test_b"]) ++
+    "@enum DDD FOUR 4 FIVE 5\n" ++
+    get_messages_from_avps("C", "3", ["AAA", "BBB", "CCC", "DDD"])
 ).
 
 -define(ENUM_DICT_C(Avps, Inherits, Enums),
-    ?DICT("diameter_test_c", "c") ++
+    dict("diameter_test_c", "c") ++
     "@avp_types\n" ++
-    lists:join("\n", Avps ++ Inherits ++ Enums)
+    lists:join("\n", Avps ++ Inherits ++ Enums) ++
+    get_messages_from_avps("C", "3", Avps)
 ).
 
 -define(ENUM_DICT_D,
-    ?AVP_DICT_D(["@inherits diameter_test_c"]) ++
-    "@enum DDD SIX 6 SEVEN 7\n"
+    dict("diameter_test_d", "d", [], ["@inherits diameter_test_c"]) ++
+    "@enum DDD SIX 6 SEVEN 7\n" ++
+    get_messages_from_avps("D", "4", ["AAA", "BBB", "CCC", "DDD"])
 ).
 
 -define(ENUM_DICT_D(Avps, Inherits, Enums),
-    ?DICT("diameter_test_d", "d") ++
-    "@avp_types\n" ++
-    lists:join("\n", Avps ++ Inherits ++ Enums)
+    dict("diameter_test_d", "d", Avps, Inherits) ++
+    lists:join("\n", Enums) ++
+    get_messages_from_avps("D", "4", Avps)
 ).
 
 %% ===========================================================================
@@ -233,6 +232,26 @@ run(F, Config) ->
 
 %% ===========================================================================
 
+dict(Name, Prefix) ->
+    dict(Name, Prefix, []).
+dict(Name, Prefix, Avps) ->
+    dict(Name, Prefix, Avps, []).
+dict(Name, Prefix, Avps, Inherits) ->
+    Dict = "@id 18\n" ++
+           "@name " ++ Name ++ "\n" ++
+           "@prefix " ++ Prefix ++ "\n",
+    AvpsRes = case Avps of
+        [] -> "";
+        _ -> "\n@avp_types\n" ++ lists:join("\n", Avps) ++ "\n"
+    end,
+    InheritsRes = case Inherits of
+        [] -> "";
+        _ -> lists:join("\n", Inherits) ++ "\n"
+    end,
+    Dict ++ AvpsRes ++ InheritsRes.
+
+%% ===========================================================================
+
 load_forms(Forms) ->
     {ok, Mod, Bin, _} = compile:forms(Forms, [return]),
     {module, Mod} = code:load_binary(Mod, ?S(Mod), Bin),
@@ -286,6 +305,30 @@ codec_list_of_options(Dict, ListsOfOpts) ->
     lists:foldl(fun(Opts, ignore) -> diameter_make:codec(Dict, Opts);
                       (Opts, Acc) -> Acc = diameter_make:codec(Dict, Opts)
                 end, ignore, ListsOfOpts).
+
+%% ===========================================================================
+
+get_messages_from_avps(_Prefix, _Id, []) ->
+    "";
+get_messages_from_avps(Prefix, Id, AvpsOrInherits) ->
+    MapFun = fun(Avp) -> "  [ " ++ Avp ++ " ]" end,
+    Names = lists:usort(lists:foldl(fun(AvpOrInherit, Acc) ->
+        case string:split(AvpOrInherit, " ", all) of
+            ["@inherits", _] ->
+                lists:map(MapFun, ?DEFAULT_AVP_NAMES_STR);
+            ["@inherits", _ | Avps] ->
+                lists:append(Acc, lists:map(MapFun, Avps));
+            [Name | _] ->
+                lists:append(Acc, lists:map(MapFun, [Name]))
+        end
+    end, [], AvpsOrInherits)),
+    "\n@messages\n" ++
+    Prefix ++ "R ::= < Diameter Header: " ++ Id ++ ", REQ >\n" ++
+    lists:join("\n", Names) ++
+    "\n* [ AVP ]\n" ++
+    Prefix ++ "A ::= < Diameter Header: " ++ Id ++ " >\n" ++
+    lists:join("\n", Names) ++
+    "\n* [ AVP ]\n".
 
 %% ===========================================================================
 
@@ -350,11 +393,11 @@ verify_both_limited_imports_are_kept_with_multiple_inherits(_) ->
 
     DictB = ?AVP_DICT_B(["@inherits diameter_test_a AAA"]),
 
-    DictC = ?AVP_DICT_C(["@inherits diameter_test_a BBB", "@inherits diameter_test_b"]),
+    DictC = ?AVP_DICT_C(["@inherits diameter_test_a BBB", "@inherits diameter_test_b"], ["AAA", "BBB"]),
     %% Check reverse order as DictC
-    DictC_R = ?AVP_DICT_C(["@inherits diameter_test_b", "@inherits diameter_test_a BBB"]),
+    DictC_R = ?AVP_DICT_C(["@inherits diameter_test_b", "@inherits diameter_test_a BBB"], ["AAA", "BBB"]),
 
-    DictD = ?AVP_DICT_D(["@inherits diameter_test_c"]),
+    DictD = ?AVP_DICT_D(["@inherits diameter_test_c"], ["AAA", "BBB"]),
     
     {ok, [HA, EA, FA]} = codec_list_of_options(DictA),
     ct:pal("~s~n~s~n", [HA, EA]),
