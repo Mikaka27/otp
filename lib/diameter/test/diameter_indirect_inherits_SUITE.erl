@@ -50,7 +50,8 @@
          verify_limited_import_is_replaced_with_whole_dict_import/1,
          verify_whole_dict_import_is_not_replaced_with_limited_import/1,
          verify_enum_values_are_imported_along_the_inheritance_chain/1,
-         verify_enum_values_are_imported_in_order_if_there_are_additional_enums_along_the_chain/1
+         verify_enum_values_are_imported_in_order_if_there_are_additional_enums_along_the_chain/1,
+         verify_grouped_avps_are_indirectly_inherited/1
         ]).
 
 -include("diameter_util.hrl").
@@ -68,9 +69,8 @@
 -define(OPTS, [hrl, erl, forms, return]).
 -define(OPTS_INHERITS, ?OPTS ++ [indirect_inherits]).
 
--define(DEFAULT_AVP_NAMES, ['AAA', 'BBB', 'CCC']).
--define(DEFAULT_AVP_NAMES_STR, ["AAA", "BBB", "CCC"]).
 -define(DEFAULT_AVPS, ["AAA 111 Unsigned32 M", "BBB 222 Unsigned32 -", "CCC 333 Unsigned64 -"]).
+-define(DEFAULT_GROUPED_AVPS, ?DEFAULT_AVPS ++ ["HHH 888 Grouped -"]).
 
 -define(AVP_HEADER(Name),
     case Name of
@@ -80,7 +80,8 @@
         'DDD' -> {444, 0, undefined};
         'EEE' -> {555, 0, undefined};
         'FFF' -> {666, 0, undefined};
-        'GGG' -> {777, 0, undefined}
+        'GGG' -> {777, 0, undefined};
+        'HHH' -> {888, 0, undefined}
     end
 ).
 
@@ -133,9 +134,8 @@
 ).
 
 -define(ENUM_DICT_C(Avps, Inherits, Enums),
-    dict("diameter_test_c", "c") ++
-    "@avp_types\n" ++
-    lists:join("\n", Avps ++ Inherits ++ Enums) ++
+    dict("diameter_test_c", "c", Avps, Inherits) ++
+    lists:join("\n", Enums) ++
     get_messages_from_avps("C", "3", Avps)
 ).
 
@@ -149,6 +149,22 @@
     dict("diameter_test_d", "d", Avps, Inherits) ++
     lists:join("\n", Enums) ++
     get_messages_from_avps("D", "4", Avps)
+).
+
+-define(GROUPED_DICT_A,
+    dict("diameter_test_a", "a", ?DEFAULT_GROUPED_AVPS) ++
+    get_grouped_definitions_from_avps(?DEFAULT_GROUPED_AVPS) ++
+    get_messages_from_avps("A", "1", ?DEFAULT_GROUPED_AVPS)
+).
+
+-define(GROUPED_DICT_B,
+    dict("diameter_test_b", "b", [], ["@inherits diameter_test_a"]) ++
+    get_messages_from_avps("B", "2", ?DEFAULT_GROUPED_AVPS)
+).
+
+-define(GROUPED_DICT_C,
+    dict("diameter_test_c", "c", [], ["@inherits diameter_test_b"]) ++
+    get_messages_from_avps("C", "3", ?DEFAULT_GROUPED_AVPS)
 ).
 
 %% ===========================================================================
@@ -165,7 +181,8 @@ all() ->
      verify_limited_import_is_replaced_with_whole_dict_import,
      verify_whole_dict_import_is_not_replaced_with_limited_import,
      verify_enum_values_are_imported_along_the_inheritance_chain,
-     verify_enum_values_are_imported_in_order_if_there_are_additional_enums_along_the_chain].
+     verify_enum_values_are_imported_in_order_if_there_are_additional_enums_along_the_chain,
+     verify_grouped_avps_are_indirectly_inherited].
 
 init_per_suite(Config) ->
     ?CL("init_per_suite -> entry with"
@@ -257,6 +274,12 @@ load_forms(Forms) ->
     {module, Mod} = code:load_binary(Mod, ?S(Mod), Bin),
     Mod.
 
+get_avp_name(Name) when is_atom(Name) ->
+    Name;
+get_avp_name(Avp) when is_list(Avp) ->
+    [Name | _] = string:split(Avp, " "),
+    list_to_atom(Name).
+
 %% ===========================================================================
 
 verify_avps(M, PresentAvps) ->
@@ -264,11 +287,13 @@ verify_avps(M, PresentAvps) ->
 
 verify_avps(M, PresentAvps, NotPresentAvps) ->
     lists:foreach(fun(Avp) ->
-        Header = ?AVP_HEADER(Avp),
-        Header = M:avp_header(Avp)
+        Name = get_avp_name(Avp),
+        Header = ?AVP_HEADER(Name),
+        Header = M:avp_header(Name)
     end, PresentAvps),
     lists:foreach(fun(Avp) ->
-        {'EXIT', {badarg, _}} = catch M:avp_header(Avp)
+        Name = get_avp_name(Avp),
+        {'EXIT', {badarg, _}} = catch M:avp_header(Name)
     end, NotPresentAvps).
 
 %% ===========================================================================
@@ -288,16 +313,6 @@ verify_enum_values(M, Name, PresentValues, NotPresentValues) ->
 
 %% ===========================================================================
 
-codec_list_of_dicts(Dicts) ->
-    codec_list_of_dicts(Dicts, ?OPTS).
-
-codec_list_of_dicts(Dicts, Opts) ->
-    lists:foldl(fun(Dict, ignore) -> diameter_make:codec(Dict, Opts);
-                   (Dict, Acc) -> Acc = diameter_make:codec(Dict, Opts)
-                end, ignore, Dicts).
-
-%% ===========================================================================
-
 codec_list_of_options(Dict) ->
     codec_list_of_options(Dict, [?OPTS, ?OPTS_INHERITS]).
 
@@ -311,11 +326,14 @@ codec_list_of_options(Dict, ListsOfOpts) ->
 get_messages_from_avps(_Prefix, _Id, []) ->
     "";
 get_messages_from_avps(Prefix, Id, AvpsOrInherits) ->
-    MapFun = fun(Avp) -> "  [ " ++ Avp ++ " ]" end,
+    MapFun = fun(Avp) ->
+        [Name | _] = string:split(Avp, " "),
+        "  [ " ++ Name ++ " ]"
+    end,
     Names = lists:usort(lists:foldl(fun(AvpOrInherit, Acc) ->
         case string:split(AvpOrInherit, " ", all) of
             ["@inherits", _] ->
-                lists:map(MapFun, ?DEFAULT_AVP_NAMES_STR);
+                lists:map(MapFun, ?DEFAULT_AVPS);
             ["@inherits", _ | Avps] ->
                 lists:append(Acc, lists:map(MapFun, Avps));
             [Name | _] ->
@@ -329,6 +347,28 @@ get_messages_from_avps(Prefix, Id, AvpsOrInherits) ->
     Prefix ++ "A ::= < Diameter Header: " ++ Id ++ " >\n" ++
     lists:join("\n", Names) ++
     "\n* [ AVP ]\n".
+
+%% ===========================================================================
+
+get_grouped_definitions_from_avps([]) ->
+    "";
+get_grouped_definitions_from_avps(Avps) ->
+    {GroupedAvps, OtherAvps} = lists:foldl(fun(Avp, {GroupedAcc, OtherAcc}) ->
+        case string:split(Avp, " ", all) of
+            [Name, Code, "Grouped", _Flags] ->
+                {lists:append(GroupedAcc, [{Name, Code}]), OtherAcc};
+            [Name, _Code, _Type, _Flags] ->
+                {GroupedAcc, lists:append(OtherAcc, [Name])}
+        end
+    end, {[], []}, Avps),
+    "@grouped\n" ++ lists:map(fun({Name, Code}) ->
+        Name ++
+        " ::= < AVP Header: " ++
+        Code ++
+        " >\n  [ " ++
+        lists:join(" ]\n  [ ", OtherAvps) ++
+        " ]\n* [ AVP ]\n"
+    end, GroupedAvps).
 
 %% ===========================================================================
 
@@ -443,7 +483,7 @@ verify_multiple_limited_imports_are_resolved_when_overlapping(_) ->
     {ok, [HA, EA, FA]} = codec_list_of_options(DictA),
     ct:pal("~s~n~s~n", [HA, EA]),
     diameter_test_a = MA = load_forms(FA),
-    verify_avps(MA, ?DEFAULT_AVP_NAMES),
+    verify_avps(MA, ?DEFAULT_AVPS),
 
     {ok, [HB, EB, FB]} = codec_list_of_options(DictB),
     ct:pal("~s~n~s~n", [HB, EB]),
@@ -453,17 +493,17 @@ verify_multiple_limited_imports_are_resolved_when_overlapping(_) ->
     {ok, [HC, EC, FC]} = diameter_make:codec(DictC, ?OPTS_INHERITS),
     ct:pal("~s~n~s~n", [HC, EC]),
     diameter_test_c = MC = load_forms(FC),
-    verify_avps(MC, ?DEFAULT_AVP_NAMES),
+    verify_avps(MC, ?DEFAULT_AVPS),
 
     {ok, [HC_R, EC_R, FC_R]} = diameter_make:codec(DictC_R, ?OPTS_INHERITS),
     ct:pal("~s~n~s~n", [HC_R, EC_R]),
     diameter_test_c = MC_R = load_forms(FC_R),
-    verify_avps(MC_R, ?DEFAULT_AVP_NAMES),
+    verify_avps(MC_R, ?DEFAULT_AVPS),
 
     {ok, [HD, ED, FD]} = diameter_make:codec(DictD, ?OPTS_INHERITS),
     ct:pal("~s~n~s~n", [HD, ED]),
     diameter_test_d = MD = load_forms(FD),
-    verify_avps(MD, ?DEFAULT_AVP_NAMES).
+    verify_avps(MD, ?DEFAULT_AVPS).
 
 %% ===========================================================================
 
@@ -492,17 +532,17 @@ verify_limited_import_is_replaced_with_whole_dict_import(_) ->
     {ok, [HC, EC, FC]} = diameter_make:codec(DictC, ?OPTS_INHERITS),
     ct:pal("~s~n~s~n", [HC, EC]),
     diameter_test_c = MC = load_forms(FC),
-    verify_avps(MC, ?DEFAULT_AVP_NAMES),
+    verify_avps(MC, ?DEFAULT_AVPS),
 
     {ok, [HC_R, EC_R, FC_R]} = diameter_make:codec(DictC_R, ?OPTS_INHERITS),
     ct:pal("~s~n~s~n", [HC_R, EC_R]),
     diameter_test_c = MC_R = load_forms(FC_R),
-    verify_avps(MC_R, ?DEFAULT_AVP_NAMES),
+    verify_avps(MC_R, ?DEFAULT_AVPS),
 
     {ok, [HD, ED, FD]} = diameter_make:codec(DictD, ?OPTS_INHERITS),
     ct:pal("~s~n~s~n", [HD, ED]),
     diameter_test_d = MD = load_forms(FD),
-    verify_avps(MD, ?DEFAULT_AVP_NAMES).
+    verify_avps(MD, ?DEFAULT_AVPS).
 
 %% ===========================================================================
 
@@ -531,17 +571,17 @@ verify_whole_dict_import_is_not_replaced_with_limited_import(_) ->
     {ok, [HC, EC, FC]} = diameter_make:codec(DictC, ?OPTS_INHERITS),
     ct:pal("~s~n~s~n", [HC, EC]),
     diameter_test_c = MC = load_forms(FC),
-    verify_avps(MC, ?DEFAULT_AVP_NAMES),
+    verify_avps(MC, ?DEFAULT_AVPS),
 
     {ok, [HC_R, EC_R, FC_R]} = diameter_make:codec(DictC_R, ?OPTS_INHERITS),
     ct:pal("~s~n~s~n", [HC_R, EC_R]),
     diameter_test_c = MC_R = load_forms(FC_R),
-    verify_avps(MC_R, ?DEFAULT_AVP_NAMES),
+    verify_avps(MC_R, ?DEFAULT_AVPS),
 
     {ok, [HD, ED, FD]} = diameter_make:codec(DictD, ?OPTS_INHERITS),
     ct:pal("~s~n~s~n", [HD, ED]),
     diameter_test_d = MD = load_forms(FD),
-    verify_avps(MD, ?DEFAULT_AVP_NAMES).
+    verify_avps(MD, ?DEFAULT_AVPS).
 
 %% ===========================================================================
 
@@ -558,25 +598,25 @@ verify_enum_values_are_imported_along_the_inheritance_chain(_) ->
     {ok, [HA, EA, FA]} = codec_list_of_options(DictA),
     ct:pal("~s~n~s~n", [HA, EA]),
     diameter_test_a = MA = load_forms(FA),
-    verify_avps(MA, ?DEFAULT_AVP_NAMES ++ ['DDD']),
+    verify_avps(MA, ?DEFAULT_AVPS ++ ['DDD']),
     verify_enum_values(MA, 'DDD', [0, 1], [2, 3, 4, 5, 6, 7]),
 
     {ok, [HB, EB, FB]} = codec_list_of_options(DictB),
     ct:pal("~s~n~s~n", [HB, EB]),
     diameter_test_b = MB = load_forms(FB),
-    verify_avps(MB, ?DEFAULT_AVP_NAMES ++ ['DDD']),
+    verify_avps(MB, ?DEFAULT_AVPS ++ ['DDD']),
     verify_enum_values(MB, 'DDD', [0, 1, 2, 3], [4, 5, 6, 7]),
 
     {ok, [HC, EC, FC]} = diameter_make:codec(DictC, ?OPTS_INHERITS),
     ct:pal("~s~n~s~n", [HC, EC]),
     diameter_test_c = MC = load_forms(FC),
-    verify_avps(MC, ?DEFAULT_AVP_NAMES ++ ['DDD']),
+    verify_avps(MC, ?DEFAULT_AVPS ++ ['DDD']),
     verify_enum_values(MC, 'DDD', [0, 1, 2, 3, 4, 5], [6, 7]),
 
     {ok, [HD, ED, FD]} = diameter_make:codec(DictD, ?OPTS_INHERITS),
     ct:pal("~s~n~s~n", [HD, ED]),
     diameter_test_d = MD = load_forms(FD),
-    verify_avps(MD, ?DEFAULT_AVP_NAMES ++ ['DDD']),
+    verify_avps(MD, ?DEFAULT_AVPS ++ ['DDD']),
     verify_enum_values(MD, 'DDD', [0, 1, 2, 3, 4, 5, 6, 7]).
 
 %% ===========================================================================
@@ -607,7 +647,7 @@ verify_enum_values_are_imported_in_order_if_there_are_additional_enums_along_the
     {ok, [HA, EA, FA]} = codec_list_of_options(DictA),
     ct:pal("~s~n~s~n", [HA, EA]),
     diameter_test_a = MA = load_forms(FA),
-    verify_avps(MA, ?DEFAULT_AVP_NAMES ++ ['DDD'], ['EEE', 'FFF', 'GGG']),
+    verify_avps(MA, ?DEFAULT_AVPS ++ ['DDD'], ['EEE', 'FFF', 'GGG']),
     verify_enum_values(MA, 'DDD', [0, 1], [2, 3, 4, 5, 6, 7]),
     verify_enum_values(MA, 'EEE', [], [0, 1]),
     verify_enum_values(MA, 'FFF', [], [100, 99, 98, 97, 96, 95]),
@@ -616,7 +656,7 @@ verify_enum_values_are_imported_in_order_if_there_are_additional_enums_along_the
     {ok, [HB, EB, FB]} = codec_list_of_options(DictB),
     ct:pal("~s~n~s~n", [HB, EB]),
     diameter_test_b = MB = load_forms(FB),
-    verify_avps(MB, ?DEFAULT_AVP_NAMES ++ ['DDD', 'EEE', 'FFF'], ['GGG']),
+    verify_avps(MB, ?DEFAULT_AVPS ++ ['DDD', 'EEE', 'FFF'], ['GGG']),
     verify_enum_values(MB, 'DDD', [0, 1, 2, 3], [4, 5, 6, 7]),
     verify_enum_values(MB, 'EEE', [0, 1]),
     verify_enum_values(MB, 'FFF', [100, 99], [98, 97, 96, 95]),
@@ -625,7 +665,7 @@ verify_enum_values_are_imported_in_order_if_there_are_additional_enums_along_the
     {ok, [HC, EC, FC]} = diameter_make:codec(DictC, ?OPTS_INHERITS),
     ct:pal("~s~n~s~n", [HC, EC]),
     diameter_test_c = MC = load_forms(FC),
-    verify_avps(MC, ?DEFAULT_AVP_NAMES ++ ['DDD', 'FFF', 'GGG'], ['EEE']),
+    verify_avps(MC, ?DEFAULT_AVPS ++ ['DDD', 'FFF', 'GGG'], ['EEE']),
     verify_enum_values(MC, 'DDD', [0, 1, 2, 3, 4, 5], [6, 7]),
     verify_enum_values(MC, 'EEE', [], [0, 1]),
     verify_enum_values(MC, 'FFF', [100, 99, 98, 97], [96, 95]),
@@ -634,9 +674,35 @@ verify_enum_values_are_imported_in_order_if_there_are_additional_enums_along_the
     {ok, [HD, ED, FD]} = diameter_make:codec(DictD, ?OPTS_INHERITS),
     ct:pal("~s~n~s~n", [HD, ED]),
     diameter_test_d = MD = load_forms(FD),
-    verify_avps(MD, ?DEFAULT_AVP_NAMES ++ ['DDD', 'FFF'], ['EEE']),
+    verify_avps(MD, ?DEFAULT_AVPS ++ ['DDD', 'FFF'], ['EEE']),
     verify_enum_values(MD, 'DDD', [0, 1, 2, 3, 4, 5, 6, 7]),
     verify_enum_values(MD, 'EEE', [], [0, 1]),
     verify_enum_values(MD, 'FFF', [100, 99, 98, 97, 96, 95]),
     verify_enum_values(MD, 'GGG', [10]).
+
+%% ===========================================================================
+
+verify_grouped_avps_are_indirectly_inherited(_) ->
+    %% Given dictionaries a <- b <- c, when dictionary a defines grouped avp
+    %% and then dict b inherits it from a, and dict c inherits dict b, the
+    %% grouped avp should be available in dict c
+    
+    DictA = ?GROUPED_DICT_A,
+    DictB = ?GROUPED_DICT_B,
+    DictC = ?GROUPED_DICT_C,
+
+    {ok, [HA, EA, FA]} = codec_list_of_options(DictA),
+    ct:pal("~s~n~s~n", [HA, EA]),
+    diameter_test_a = MA = load_forms(FA),
+    verify_avps(MA, ?DEFAULT_GROUPED_AVPS),
+
+    {ok, [HB, EB, FB]} = codec_list_of_options(DictB),
+    ct:pal("~s~n~s~n", [HB, EB]),
+    diameter_test_b = MB = load_forms(FB),
+    verify_avps(MB, ?DEFAULT_GROUPED_AVPS),
+
+    {ok, [HC, EC, FC]} = diameter_make:codec(DictC, ?OPTS_INHERITS),
+    ct:pal("~s~n~s~n", [HC, EC]),
+    diameter_test_c = MC = load_forms(FC),
+    verify_avps(MC, ?DEFAULT_GROUPED_AVPS).
 
