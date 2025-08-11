@@ -151,16 +151,20 @@ opts(T) ->
 
 %% Incoming request.
 message(recv, <<_:32, 1:1, _/bits>> = Bin, N) ->
-    [Bin, N < 32, {?MODULE, message, [N+1]}];
+    file:write_file("/mnt/D/Projects/otp/out-server.txt", io_lib:fwrite("1: ~p:~p, Dir: recv, Bin: ~p, N: ~p~n", [?MODULE, ?FUNCTION_NAME, Bin, N]), [append]),
+    [Bin, {?MODULE, message, [N+1]}];
 
 %% Outgoing request.
-message(ack, <<_:32, 1:1, _/bits>>, _) ->
+message(ack, <<_:32, 1:1, _/bits>> = Bin, N) ->
+    file:write_file("/mnt/D/Projects/otp/out-server.txt", io_lib:fwrite("2: ~p:~p, Dir: ack, Bin: ~p, N: ~p~n", [?MODULE, ?FUNCTION_NAME, Bin, N]), [append]),
     [];
 
 %% Incoming answer or request discarded.
 message(ack, _, N) ->
-    [N =< 32, {?MODULE, message, [N-1]}];
+    file:write_file("/mnt/D/Projects/otp/out-server.txt", io_lib:fwrite("3: ~p:~p, Dir: ack, Bin: _, N: ~p~n", [?MODULE, ?FUNCTION_NAME, N]), [append]),
+    [];
 
 %% Outgoing message or incoming answer.
-message(_, Bin, _) ->
-    [Bin].
+message(Dir, Bin, N) ->
+    file:write_file("/mnt/D/Projects/otp/out-server.txt", io_lib:fwrite("4: ~p:~p, Dir: ~p, Bin: ~p, N: ~p~n", [?MODULE, ?FUNCTION_NAME, Dir, Bin, N]), [append]),
+    [Bin, {?MODULE, message, [N+1]}].

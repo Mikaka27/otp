@@ -47,6 +47,8 @@
          call/0,
          call/1]).
 
+-export([message/3]).
+
 -define(DEF_SVC_NAME, ?MODULE).
 -define(L, atom_to_list).
 -define(LOOPBACK, {127,0,0,1}).
@@ -189,4 +191,18 @@ opts(loopback, RP) ->
     opts(?LOOPBACK, RP);
 
 opts(RA, RP) ->
-    [{raddr, RA}, {rport, RP}, {reuseaddr, true}].
+    [{raddr, RA}, {rport, RP}, {reuseaddr, true}, {message_cb, {?MODULE, message, [0]}}].
+
+%% message/3
+%%
+%% Simple message callback that received and sends all messages
+
+%% Incoming answer or request discarded.
+message(ack, Bin, N) ->
+    file:write_file("/mnt/D/Projects/otp/out-client.txt", io_lib:fwrite("1: ~p:~p, Dir: ack, Bin: ~p, N: ~p~n", [?MODULE, ?FUNCTION_NAME, Bin, N]), [append]),
+    [];
+
+%% Outgoing or incoming request.
+message(Dir, Bin, N) ->
+    file:write_file("/mnt/D/Projects/otp/out-client.txt", io_lib:fwrite("2: ~p:~p, Dir: ~p, Bin: ~p, N: ~p~n", [?MODULE, ?FUNCTION_NAME, Dir, Bin, N]), [append]),
+    [Bin, {?MODULE, message, [N+1]}].

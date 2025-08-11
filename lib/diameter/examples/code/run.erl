@@ -1,0 +1,46 @@
+-module(run).
+
+-export([run/0]).
+
+run() ->
+    % application:load(diameter),
+    % ok = code:atomic_load([
+    %     diameter_types,
+    %     diameter_watchdog_sup,
+    %     diameter_watchdog,
+    %     diameter,
+    %     diameter_codegen,
+    %     diameter_dict_scanner,
+    %     diameter_dict_util,
+    %     diameter_exprecs,
+    %     diameter_make,
+    %     diameter_dict_parser,
+    %     diameter_gen_acct_rfc6733,
+    %     diameter_gen_base_accounting,
+    %     diameter_gen_base_rfc3588,
+    %     diameter_gen_base_rfc6733,
+    %     diameter_gen_doic_rfc7683,
+    %     diameter_gen_relay,
+    %     diameter_dbg,
+    %     diameter_info,
+    %     diameter_etcp_sup,
+    %     diameter_sctp_sup,
+    %     diameter_sctp,
+    %     diameter_tcp_sup,
+    %     diameter_tcp,
+    %     diameter_transport_sup,
+    %     diameter_transport
+    % ]),
+    % Tracer = spawn(fun F() -> receive M -> io:format("~p~n", [M]), F() end end),
+    % Session = trace:session_create(my_session, Tracer, []),
+    % trace:process(Session, all, true, [call]),
+    % Found = trace:function(Session, {diameter_tcp, '_', '_'}, true, [local, meta, call_count, call_time, call_memory]),
+    % io:fwrite("Found: ~p~n", [Found]),
+    diameter:start(),
+    server:start(),
+    server:listen(tcp),
+    client:start(),
+    client:connect(tcp),
+    timer:sleep(250),
+    client:call(),
+    timer:sleep(10000).

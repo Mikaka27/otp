@@ -400,6 +400,7 @@ init(accept = T, Ref, Mod, Pid, Opts, Addrs, SvcPid) ->
     ok = accept_peer(Mod, Sock, accept(Matches)),
     publish(Mod, T, Ref, Sock),
     diameter_peer:up(Pid),
+    put(role, server),
     Sock;
 
 init(connect = T, Ref, Mod, Pid, Opts, Addrs, _SvcPid) ->
@@ -410,6 +411,7 @@ init(connect = T, Ref, Mod, Pid, Opts, Addrs, _SvcPid) ->
     Sock = ok(connect(Mod, RAddr, RPort, gen_opts(Addrs, Rest))),
     publish(Mod, T, Ref, Sock),
     up(Pid, {RAddr, RPort}, Mod, Sock),
+    put(role, client),
     Sock.
 
 up(Pid, Remote, Mod, Sock) ->
@@ -1103,50 +1105,62 @@ getstat(M, Sock) ->
 %% message/3
 
 message(send, false = M, S) ->
+    file:write_file("/mnt/D/Projects/otp/out-" ++ atom_to_list(get(role)) ++ ".txt", io_lib:fwrite("~p, Role: ~p, Dir: send, Msg: false, S: ~p~n", [?FUNCTION_NAME, get(role), S]), [append]),
     message(ack, M, S);
 
 message(ack, _, #transport{message_cb = false} = S) ->
+    file:write_file("/mnt/D/Projects/otp/out-" ++ atom_to_list(get(role)) ++ ".txt", io_lib:fwrite("~p, Role: ~p, Dir: ack, Msg: _, S: ~p~n", [?FUNCTION_NAME, get(role), S]), [append]),
     S;
 
 message(Dir, Msg, #transport{message_cb = CB} = S) ->
+    file:write_file("/mnt/D/Projects/otp/out-" ++ atom_to_list(get(role)) ++ ".txt", io_lib:fwrite("~p, Role: ~p, Dir: ~p, Msg: ~p, S: ~p~n", [?FUNCTION_NAME, get(role), Dir, Msg, S]), [append]),
     setopts(actions(cb(CB, Dir, Msg), Dir, S)).
 
 %% actions/3
 
 actions([], _, S) ->
+    file:write_file("/mnt/D/Projects/otp/out-" ++ atom_to_list(get(role)) ++ ".txt", io_lib:fwrite("~p, Role: ~p, Actions: [], S: ~p~n", [?FUNCTION_NAME, get(role), S]), [append]),
     S;
 
 actions([B | As], Dir, S)
   when is_boolean(B) ->
+    file:write_file("/mnt/D/Projects/otp/out-" ++ atom_to_list(get(role)) ++ ".txt", io_lib:fwrite("~p, Role: ~p, [B: ~p | As: ~p], Dir: ~p, S: ~p~n", [?FUNCTION_NAME, get(role), B, As, Dir, S]), [append]),
     actions(As, Dir, S#transport{recv = B});
 
 actions([Dir | As], _, S)
   when Dir == send;
        Dir == recv ->
+    file:write_file("/mnt/D/Projects/otp/out-" ++ atom_to_list(get(role)) ++ ".txt", io_lib:fwrite("~p, Role: ~p, [Dir: ~p | As: ~p], Dir: _, S: ~p~n", [?FUNCTION_NAME, get(role), Dir, As, S]), [append]),
     actions(As, Dir, S);
 
 actions([Msg | As], send = Dir, S)
   when is_binary(Msg);
        is_record(Msg, diameter_packet) ->
+    file:write_file("/mnt/D/Projects/otp/out-" ++ atom_to_list(get(role)) ++ ".txt", io_lib:fwrite("~p, Role: ~p, [Msg: ~p | As: ~p], Dir: ~p, S: ~p~n", [?FUNCTION_NAME, get(role), Msg, As, Dir, S]), [append]),
     actions(As, Dir, send(Msg, S));
 
 actions([Msg | As], recv = Dir, #transport{parent = Pid} = S)
   when is_binary(Msg);
        is_record(Msg, diameter_packet) ->
+    file:write_file("/mnt/D/Projects/otp/out-" ++ atom_to_list(get(role)) ++ ".txt", io_lib:fwrite("~p, Role: ~p, [Msg: ~p | As: ~p], Dir: ~p, S: ~p~n", [?FUNCTION_NAME, get(role), Msg, As, Dir, S]), [append]),
     diameter_peer:recv(Pid, Msg),
     actions(As, Dir, S);
 
 actions([{defer, Tmo, Acts} | As], Dir, S) ->
+    file:write_file("/mnt/D/Projects/otp/out-" ++ atom_to_list(get(role)) ++ ".txt", io_lib:fwrite("~p, Role: ~p, [{defer, Tmo: ~p, Acts: ~p} | As: ~p], Dir: ~p, S: ~p~n", [?FUNCTION_NAME, get(role), Tmo, Acts, As, Dir, S]), [append]),
     erlang:send_after(Tmo, self(), {actions, Dir, Acts}),
     actions(As, Dir, S);
 
 actions(CB, _, S) ->
+    file:write_file("/mnt/D/Projects/otp/out-" ++ atom_to_list(get(role)) ++ ".txt", io_lib:fwrite("~p, Role: ~p, CB: ~p, Dir: _, S: ~p~n", [?FUNCTION_NAME, get(role), CB, S]), [append]),
     S#transport{message_cb = CB}.
 
 %% cb/3
 
 cb(false, _, Msg) ->
+    file:write_file("/mnt/D/Projects/otp/out-" ++ atom_to_list(get(role)) ++ ".txt", io_lib:fwrite("~p, Role: ~p, CB: false, Dir: _, Msg: ~p~n", [?FUNCTION_NAME, get(role), Msg]), [append]),
     [Msg];
 
 cb(CB, Dir, Msg) ->
+    file:write_file("/mnt/D/Projects/otp/out-" ++ atom_to_list(get(role)) ++ ".txt", io_lib:fwrite("~p, Role: ~p, CB: ~p, Dir: ~p, Msg: ~p~n", [?FUNCTION_NAME, get(role), CB, Dir, Msg]), [append]),
     diameter_lib:eval([CB, Dir, Msg]).
