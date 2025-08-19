@@ -1,9 +1,9 @@
 -module(mr).
 -compile([export_all, nowarn_export_all]).
 
--record(some_rec, {some_id :: atom(), some_int :: number()}).
+-record(some_rec, {some_id :: number(), some_int :: number()}).
 
--define(NUM_RECORDS, 1000).
+-define(NUM_RECORDS, 20000).
 
 run() ->
     run(100).
@@ -79,8 +79,8 @@ verify_data_in_table(Node) ->
     end.
 
 remove_and_readd_node(Node, PeersAndNodes) ->
-    ok = rpc:call(Node, mnesia, lkill, []),
     Tables = mnesia:system_info(tables),
+    ok = rpc:call(Node, mnesia, lkill, []),
     Functions = lists:foldl(fun(schema, Acc) ->
                         Acc;
                     (Table, Acc) ->
@@ -89,8 +89,8 @@ remove_and_readd_node(Node, PeersAndNodes) ->
                             true when length(Nodes) == 1 ->
                                 Acc;
                             true ->
-                                Res = mnesia:del_table_copy(Table, Node),
-                                [fun() -> mnesia:add_table_copy(Table, Node, ram_copies) end | Acc];
+                                {atomic, ok} = mnesia:del_table_copy(Table, Node),
+                                [fun() -> {atomic, ok} = mnesia:add_table_copy(Table, Node, ram_copies) end | Acc];
                             false ->
                                 Acc
                         end
@@ -103,16 +103,16 @@ remove_and_readd_node(Node, PeersAndNodes) ->
     }),
     {_, AllNodes} = lists:unzip(PeersAndNodes),
     OtherNodes = lists:delete(Node, AllNodes),
-    ok = rpc:call(Node, mnesia, start, [[{extra_db_nodes, OtherNodes}]]),
+    ok = rpc:call(NewNode, mnesia, start, [[{extra_db_nodes, OtherNodes}]]),
     lists:foreach(fun(Fun) ->
         Fun()
     end, Functions),
     try
-        ok = mnesia:wait_for_tables([get_table_name(NewNode)], 120000),
-        verify_data_in_table(Node)
+        ok = rpc:call(NewNode, mnesia, wait_for_tables, [[get_table_name(NewNode)], 120000]),
+        ok = rpc:call(NewNode, ?MODULE, verify_data_in_table, [NewNode])
     catch
         C : R : ST ->
-            io:fwrite("Error during re-adding node: ~p:~p:~p~n", [C, R, ST]),
+            io:fwrite("Error during re-adding node: ~p ~p:~p:~p~n", [Node, C, R, ST]),
             mnesia_lib:dist_coredump(),
             erlang:raise(C, R, ST)
     end,
@@ -122,8 +122,9 @@ loop(_, 0) ->
     ok;
 loop(PeersAndNodes, Retries) ->
     {Peers, Nodes} = lists:unzip(PeersAndNodes),
-    Index = random:uniform(length(Nodes)),
-    Node = lists:nth(Index, Nodes),
+    Index = random:uniform(length(Nodes) - 1),
+    %% Ensure we don't pick the first node, it's table has copy only on node 1
+    Node = lists:nth(Index + 1, Nodes),
     NewPeersAndNodes = remove_and_readd_node(Node, PeersAndNodes),
     loop(NewPeersAndNodes, Retries - 1).
 
