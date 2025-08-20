@@ -87,7 +87,6 @@ verify_data_in_tables(Node, NumTablesPerWorker) ->
 remove_and_readd_node(Node, NumTablesPerWorker, PeersAndNodes) ->
     {_, AllNodes} = lists:unzip(PeersAndNodes),
     OtherNodes = lists:delete(Node, AllNodes),
-    StartTime = erlang:monotonic_time(millisecond),
     Tables = mnesia:system_info(tables),
     ok = rpc:call(Node, mnesia, lkill, []),
     io:fwrite("Removing node ~p...~n", [Node]),
@@ -95,15 +94,15 @@ remove_and_readd_node(Node, NumTablesPerWorker, PeersAndNodes) ->
                         Acc;
                     (Table, Acc) ->
                         Nodes = mnesia:table_info(Table, ram_copies),
-                        io:fwrite("Checking table ~p with copies on nodes: ~p...~n", [Table, length(Nodes)]),
+                        % io:fwrite("Checking table ~p with copies on nodes: ~p...~n", [Table, length(Nodes)]),
                         case lists:member(Node, Nodes) of
                             true when length(Nodes) == 1 ->
                                 Acc;
                             true ->
-                                io:fwrite("Removing table copy ~p from node ~p...~n", [Table, Node]),
+                                % io:fwrite("Removing table copy ~p from node ~p...~n", [Table, Node]),
                                 {atomic, ok} = mnesia:del_table_copy(Table, Node),
                                 [fun() ->
-                                    io:fwrite("Re-adding table copy ~p on node ~p...~n", [Table, Node]),
+                                    % io:fwrite("Re-adding table copy ~p on node ~p...~n", [Table, Node]),
                                     {atomic, ok} = mnesia:add_table_copy(Table, Node, ram_copies)
                                 end | Acc];
                             false ->
@@ -117,15 +116,15 @@ remove_and_readd_node(Node, NumTablesPerWorker, PeersAndNodes) ->
         name => WorkerName,
         args => ["+S4"]
     }),
-    io:fwrite("Restarting node ~p...~n", [NewNode]),
+    NewNode = Node,
+    % io:fwrite("Restarting node ~p...~n", [NewNode]),
     ok = rpc:call(NewNode, mnesia, start, [[{extra_db_nodes, OtherNodes}]]),
     [Fun() || Fun <- Functions],
     try
-        io:fwrite("Waiting for tables to be ready on node ~p...~n", [NewNode]),
+        % io:fwrite("Waiting for tables to be ready on node ~p...~n", [NewNode]),
         ok = rpc:call(NewNode, mnesia, wait_for_tables, [get_table_names(NewNode, NumTablesPerWorker), 120000]),
-        io:fwrite("Verifying data in tables on node ~p...~n", [NewNode]),
-        ok = rpc:call(NewNode, ?MODULE, verify_data_in_tables, [NewNode, NumTablesPerWorker]),
-        io:fwrite("Restart took: ~p~n", [erlang:monotonic_time(millisecond) - StartTime])
+        % io:fwrite("Verifying data in tables on node ~p...~n", [NewNode]),
+        ok = rpc:call(NewNode, ?MODULE, verify_data_in_tables, [NewNode, NumTablesPerWorker])
     catch
         C : R : ST ->
             io:fwrite("Error during re-adding node: ~p ~p:~p:~p~n", [Node, C, R, ST]),

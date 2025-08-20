@@ -5,6 +5,7 @@
 %%%      (where controller nodes restart with new name)
 %%%
 %%%      ERL_AFLAGS=+S4
+%%%      ERL_FLAGS="-pa /home/dgud/mnesia_test/big_restart"
 %%% Created : 21 Jan 2010 by Dan Gudmundsson <dgud@erlang.org>
 %%%-------------------------------------------------------------------
 -module(test).
@@ -31,7 +32,7 @@ go(NoNodes, NoTabs, NoTests) ->
     [H1,H2|Other] = Ns,
     case hd(Other) == node() of
 	false ->
-	    io:format("Should be runned from ~p and not ~p~n", [node(), hd(Other)]),
+	    io:format("Should be runned from ~p and not ~p~n", [hd(Other), node()]),
             exit(H1);
 	true ->
             ok
@@ -67,21 +68,24 @@ go(NoNodes, NoTabs, NoTests) ->
 
     Stats = {0, 0, 0, 999999999999999, -1},
 
-    io:format("~n~n STARTING TEST plain~n~n",[]),
-    R1 = loop(NoTests, Tabs, Main, Other, plain, Stats),
+    % io:format("~n~n STARTING TEST plain~n~n",[]),
+    %% R1 = loop(NoTests, Tabs, Main, Other, plain, Stats),
 
     %% io:format("~n~n STARTING TEST orig~n~n",[]),
-    [[N1,N2|Rest]|_] = R2 = loop(NoTests, Tabs, Main, Other, orig, Stats),
+    %% [[N1,N2|Rest]|_] = R2 = loop(NoTests, Tabs, Main, Other, orig, Stats),
 
-    %% io:format("~n~n STARTING TEST schema~n~n",[]),
-    %% [[N1,N2|Rest]|_] = R4 = loop(NoTests, Tabs, Main, Other, schema, Stats),
+    %% %% io:format("~n~n STARTING TEST schema~n~n",[]),
+    %% %% [[N1,N2|Rest]|_] = R4 = loop(NoTests, Tabs, Main, Other, schema, Stats),
 
-    io:format("~n~n STARTING TEST before~n~n",[]),
-    R3 = loop(NoTests, Tabs, [N1,N2], Rest, before, Stats),
+    %% io:format("~n~n STARTING TEST before~n~n",[]),
+    %% R3 = loop(NoTests, Tabs, [N1,N2], Rest, before, Stats),
+
+    io:format("~n~n STARTING TEST init~n~n",[]),
+    R1 = loop(NoTests, Tabs, Main, Other, init, Stats),
 
     apply(?MODULE, print_stats, R1),
-    apply(?MODULE, print_stats, R2),
-    apply(?MODULE, print_stats, R3),
+    %% apply(?MODULE, print_stats, R2),
+    %% apply(?MODULE, print_stats, R3),
     %% apply(?MODULE, print_stats, R4),
     ok.
 
@@ -96,7 +100,8 @@ loop(N, Tabs, Main, Ns, Variant, Stats0) when N > 0 ->
                   orig -> fun orig_restart/4;
                   plain -> fun plain_restart/4;
                   before -> fun before_restart/4;
-                  schema -> fun schema_restart/4
+                  schema -> fun schema_restart/4;
+                  init -> fun init_restart/4
               end,
 
     %% timer:send_after(20_000, restart_next),
@@ -186,8 +191,8 @@ before_restart(OldNode, Other, Ns, Pid) ->
         ok = rpc:call(NewNode, mnesia, start, [[{extra_db_nodes, Ns}, %% {debug, verbose},
                                                 {no_table_loaders, 100}]]),
         io:format("~p: ~p ~0.P~n", [NewNode, time(),
-                                  rpc:call(NewNode, mnesia_controller,
-                                           get_info, [1000]), 20]),
+                                    rpc:call(NewNode, mnesia_controller,
+                                             get_info, [1000]), 20]),
         erpc:call(NewNode, fun() -> wait_for_tables(foo) end),
         {atomic, ok} = rpc:call(NewNode, mnesia, del_table_copy, [schema, OldNode]),
         io:format("Done: ~p ~p~n", [NewNode, time()]),
@@ -211,8 +216,8 @@ schema_restart(OldNode, Other, Ns, Pid) ->
         ok = rpc:call(NewNode, mnesia, start, [[{extra_db_nodes, Ns}, %% {debug, verbose},
                                                 {no_table_loaders, 100}]]),
         io:format("~p: ~p ~0.P~n", [NewNode, time(),
-                                  rpc:call(NewNode, mnesia_controller,
-                                           get_info, [1000]), 20]),
+                                    rpc:call(NewNode, mnesia_controller,
+                                             get_info, [1000]), 20]),
         erpc:call(NewNode, fun() -> wait_for_tables(foo) end),
         {atomic, ok} = rpc:call(NewNode, mnesia, del_table_copy, [schema, OldNode]),
         io:format("Done: ~p ~p~n", [NewNode, time()]),
@@ -224,6 +229,7 @@ schema_restart(OldNode, Other, Ns, Pid) ->
     end.
 
 add_tables(Tables, NewNode) ->
+    %% Needs mnesia hacks  exported mnesia_schema:do_add_table_copy
     AddTable = fun(Tab) -> mnesia_schema:do_add_table_copy(Tab, NewNode, ram_copies) end,
     AddTables = fun() ->
                         case lists:member(NewNode, mnesia:system_info(db_nodes)) of
@@ -233,18 +239,51 @@ add_tables(Tables, NewNode) ->
                 end,
     mnesia_schema:schema_transaction(AddTables).
 
+
+init_restart(OldNode, Other, Ns, Pid) ->
+    io:format("~p -> ~p~n",[OldNode, Other]),
+    MyTabs = rpc:call(OldNode, mnesia, system_info, [local_tables]) -- [schema],
+    try
+        slave:stop(OldNode),
+        start_nodes([OldNode]),
+
+        ReqId = erpc:send_request(Other, fun() -> delTables(MyTabs, OldNode) end),
+        ok = rpc:call(OldNode, mnesia, start, [[{extra_db_nodes, Ns}, %% {debug, verbose},
+                                                {no_table_loaders, 100}]]),
+        io:format("~p: ~p ~0.P~n", [OldNode, time(),
+                                    rpc:call(OldNode, mnesia_controller,
+                                             get_info, [1000]), 20]),
+        {response, []} = erpc:wait_response(ReqId, infinity),
+        [{atomic, ok} = erpc:call(Other, fun() -> addTable(Tab, OldNode) end) || Tab <- MyTabs],
+        io:format("Done: ~p ~p~n", [OldNode, time()]),
+        Pid ! {Other, OldNode}
+    catch
+        _:Reason:ST ->
+            io:format("CRASH ~p -> ~p   ~p~n ~p~n", [OldNode, Other, Reason, ST]),
+            exit(crash)
+    end.
+
+
 addTable(Tab) ->
     addTable(Tab, node()).
 addTable(Tab, Node) ->
     case mnesia:add_table_copy(Tab, Node, ram_copies) of
         {aborted, {system_limit, Tab, _}} ->
             io:format("Retry ~p ~p~n", [Node, Tab]),
-            %% mnesia:add_table_copy(Tab, Node, ram_copies);
-            exit(foo);
+            mnesia:add_table_copy(Tab, Node, ram_copies);
         Res ->
             Res
     end.
 
+delTables([Tab|Tabs], Node) ->
+    case mnesia:del_table_copy(Tab, Node) of
+        {atomic, ok} ->
+            delTables(Tabs, Node);
+        {aborted, Err} ->
+            [Err|delTables(Tabs, Node)]
+    end;
+delTables([], _) ->
+    [].
 
 calc_stats(Diff, {N, Sum, SumSq, Min, Max}=_S0) ->
     case _ = N rem 5 of
