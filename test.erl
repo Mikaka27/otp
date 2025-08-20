@@ -7,6 +7,8 @@
 %%%      ERL_AFLAGS=+S4
 %%%      ERL_FLAGS="-pa /home/dgud/mnesia_test/big_restart"
 %%% Created : 21 Jan 2010 by Dan Gudmundsson <dgud@erlang.org>
+%%% Parameters for ERIERL-1258
+%%% test:go(32, 1000, 10) - problem starts if it takes longer than 2 minutes
 %%%-------------------------------------------------------------------
 -module(test).
 -compile([export_all, nowarn_export_all]).
