@@ -21,7 +21,8 @@ run(NumWorkers, NumTablesPerWorker, Retries) ->
 start_peers(NumWorkers) ->
     lists:map(fun(N) ->
         {ok, Controller, Node} = peer:start_link(#{
-            name => "worker_" ++ integer_to_list(N)
+            name => "worker_" ++ integer_to_list(N),
+            args => ["+S4"]
         }),
         {Controller, Node}
     end, lists:seq(1, NumWorkers)).
@@ -84,6 +85,8 @@ verify_data_in_tables(Node, NumTablesPerWorker) ->
     end, TableNames).
 
 remove_and_readd_node(Node, NumTablesPerWorker, PeersAndNodes) ->
+    {_, AllNodes} = lists:unzip(PeersAndNodes),
+    OtherNodes = lists:delete(Node, AllNodes),
     StartTime = erlang:monotonic_time(millisecond),
     Tables = mnesia:system_info(tables),
     ok = rpc:call(Node, mnesia, lkill, []),
@@ -92,12 +95,17 @@ remove_and_readd_node(Node, NumTablesPerWorker, PeersAndNodes) ->
                         Acc;
                     (Table, Acc) ->
                         Nodes = mnesia:table_info(Table, ram_copies),
+                        io:fwrite("Checking table ~p with copies on nodes: ~p...~n", [Table, length(Nodes)]),
                         case lists:member(Node, Nodes) of
                             true when length(Nodes) == 1 ->
                                 Acc;
                             true ->
+                                io:fwrite("Removing table copy ~p from node ~p...~n", [Table, Node]),
                                 {atomic, ok} = mnesia:del_table_copy(Table, Node),
-                                [fun() -> {atomic, ok} = mnesia:add_table_copy(Table, Node, ram_copies) end | Acc];
+                                [fun() ->
+                                    io:fwrite("Re-adding table copy ~p on node ~p...~n", [Table, Node]),
+                                    {atomic, ok} = mnesia:add_table_copy(Table, Node, ram_copies)
+                                end | Acc];
                             false ->
                                 Acc
                         end
@@ -106,15 +114,12 @@ remove_and_readd_node(Node, NumTablesPerWorker, PeersAndNodes) ->
     true = exit(Peer, kill),
     WorkerName = "worker_" ++ get_node_number(Node),
     {ok, NewPeer, NewNode} = peer:start_link(#{
-        name => WorkerName
+        name => WorkerName,
+        args => ["+S4"]
     }),
     io:fwrite("Restarting node ~p...~n", [NewNode]),
-    {_, AllNodes} = lists:unzip(PeersAndNodes),
-    OtherNodes = lists:delete(Node, AllNodes),
     ok = rpc:call(NewNode, mnesia, start, [[{extra_db_nodes, OtherNodes}]]),
-    lists:foreach(fun(Fun) ->
-        Fun()
-    end, Functions),
+    [Fun() || Fun <- Functions],
     try
         io:fwrite("Waiting for tables to be ready on node ~p...~n", [NewNode]),
         ok = rpc:call(NewNode, mnesia, wait_for_tables, [get_table_names(NewNode, NumTablesPerWorker), 120000]),
