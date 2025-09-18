@@ -778,6 +778,7 @@ init_node_ctrl(MasterPid,Cookie,Opts) ->
     process_flag(trap_exit, true),
     ct_util:mark_process(),
     MasterNode = node(MasterPid),
+	file:write_file("/mnt/D/Projects/otp/out.txt", io_lib:fwrite("~p setting group leader of ~p to ~p~n", [?FUNCTION_NAME, self(), whereis(user)]), [append]),
     group_leader(whereis(user),self()),
     io:format("~n********** node_ctrl process ~w started on ~w **********~n",
 	      [self(),node()]),
