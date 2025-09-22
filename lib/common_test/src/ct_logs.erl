@@ -294,7 +294,7 @@ get_format_args(Content) ->
 %%% This function is called by ct_framework:init_tc/3
 init_tc(RefreshLog) ->
 	S = try throw(42) catch _ : _ : ST -> ST end,
-	file:write_file("/mnt/D/Projects/otp/out.txt", io_lib:fwrite("~p Self: ~p, GroupLeader: ~p, ST: ~p~n~n~n", [?FUNCTION_NAME, self(), group_leader(), S]), [append]),
+	ct:pal("~p Self: ~p, GroupLeader: ~p, ST: ~p~n~n~n", [?FUNCTION_NAME, self(), group_leader(), S]),
     call({init_tc,self(),group_leader(),RefreshLog}),
     tc_io_format(group_leader(), xhtml("", "<br />"), []),
     ok.
@@ -1173,7 +1173,7 @@ set_evmgr_gl(GL) ->
 	undefined -> ok;
 	EvMgrPid ->
 		S = try throw(42) catch _ : _ : ST -> ST end,
-		file:write_file("/mnt/D/Projects/otp/out.txt", io_lib:fwrite("~p setting group leader of event manager ~p to ~p~nST: ~p~n~n~n", [?FUNCTION_NAME, EvMgrPid, GL, S]), [append]),
+		ct:pal("~p setting group leader of event manager ~p to ~p~nST: ~p~n~n~n", [?FUNCTION_NAME, EvMgrPid, GL, S]),
 		group_leader(GL,EvMgrPid)
     end.
 

@@ -2130,8 +2130,7 @@ continue(_MakeErrors, _AbortIfMissingSuites) ->
 					S ! false
 				end
 			end),
-		file:write_file("/mnt/D/Projects/otp/out.txt", io_lib:fwrite("~p setting group leader of ~p to ~p~n",
-		       [?FUNCTION_NAME, self(), OldGL]), [append]),
+		ct:pal("~p setting group leader of ~p to ~p~n", [?FUNCTION_NAME, self(), OldGL]),
 	    group_leader(OldGL, self()),
 	    receive R when R==true; R==false ->
 		    R
@@ -2162,8 +2161,7 @@ set_group_leader_same_as_shell(OldGL) ->
             %% check if started from remote node (skip interaction)
             if node(OldGL) /= node(GL) -> false;
                true ->
-				file:write_file("/mnt/D/Projects/otp/out.txt", io_lib:fwrite("~p setting group leader of ~p to ~p~n",
-				       [?FUNCTION_NAME, self(), GL]), [append]),
+				ct:pal("~p setting group leader of ~p to ~p~n", [?FUNCTION_NAME, self(), GL]),
 				group_leader(GL, self())
             end;
     	[] ->
