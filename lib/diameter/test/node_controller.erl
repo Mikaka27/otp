@@ -4,12 +4,13 @@
 -export([start/0]).
 
 start() ->
-    case whereis(node_controller) of
-        undefined ->
-            spawn(fun() -> loop() end);
-        Pid when is_pid(Pid) ->
-            Pid
-    end.
+    % case whereis(node_controller) of
+    %     undefined ->
+    %         spawn(fun() -> loop() end);
+    %     Pid when is_pid(Pid) ->
+    %         Pid
+    % end.
+    spawn(fun() -> loop() end).
 
 loop() ->
     receive
