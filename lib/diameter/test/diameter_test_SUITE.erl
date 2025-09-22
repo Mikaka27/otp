@@ -42,12 +42,10 @@
          end_per_testcase/2,
          
          %% The test cases
-         test/1
+         test1/1,
+         test2/1,
+         test3/1
         ]).
-
--include("diameter.hrl").
--include("diameter_gen_base_rfc6733.hrl").
-%% Use the fact that STR/STA is identical in RFC's 3588 and 6733.
 
 -include("diameter_util.hrl").
 
@@ -61,13 +59,18 @@
 %% ===========================================================================
 
 suite() ->
-    [{timetrap, {seconds, 90}}].
+    [{timetrap, {seconds, 90}},
+     {ct_hooks, [example_cth]}].
 
 all() ->
-    [{group, test}].
+    [{group, normal},
+     {group, shuffle},
+     {group, parallel}].
 
 groups() ->
-    [{test, [], [test]}].
+    [{normal, [], [test1, test2, test3]},
+     {shuffle, [shuffle], [test1, test2, test3]},
+     {parallel, [parallel], [test1, test2, test3]}].
 
 init_per_suite(Config) ->
     ?XL("init_per_suite -> entry with"
@@ -113,14 +116,12 @@ end_per_testcase(Case, Config) when is_list(Config) ->
     ?XL("end_per_testcase(~w) -> entry", [Case]),
     Config.
 
-test(_Config) ->
-    ?XL("test -> entry"),
-    GroupLeader = group_leader(),
-    SharedTestGroupLeader = test_server_io:get_gl(true),
-    OtherTestGroupLeader = test_server_io:get_gl(false),
-    DefaultGroupLeader = lists:search(fun(Pid) -> Label = catch element(1, proc_lib:get_label(Pid)), Label == group end, erlang:processes()),
-    ?XL("test -> Parent: ~p, GroupLeader of ~p: ~p, SharedTestGroupLeader: ~p, OtherTestGroupLeader: ~p, DefaultGroupLeader: ~p~n", [process_info(self(), parent), self(), GroupLeader, SharedTestGroupLeader, OtherTestGroupLeader, DefaultGroupLeader]),
-    Labels = lists:map(fun(Pid) -> proc_lib:get_label(Pid) end, erlang:processes()),
-    ?XL("test -> Labels: ~p~n", [Labels]),
-    ct:comment("Test").
+test1(_Config) ->
+    timer:sleep(1000).
+
+test2(_Config) ->
+    timer:sleep(2000).
+
+test3(_Config) ->
+    timer:sleep(500).
 
