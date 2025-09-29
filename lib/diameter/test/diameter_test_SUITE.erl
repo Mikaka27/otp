@@ -87,6 +87,7 @@ init_per_suite(Config) ->
     Session = trace:session_create(test, Tracer, []),
     trace:process(Session, all, true, [call]),
     trace:function(Session, {erlang, group_leader, 2}, true, []),
+    example_group_leader:start(gl1, group_leader()),
     ?DUTIL:init_per_suite([{session, Session}, {tracer, Tracer} | Config]).
 
 end_per_suite(Config) ->
@@ -132,7 +133,14 @@ end_per_testcase(Case, Config) when is_list(Config) ->
 
 test1(_Config) ->
     % observer:start(),
-    timer:sleep(1000).
+    {group_leader, GL1} = process_info(whereis(node_controller), group_leader),
+    {group_leader, GL2} = process_info(whereis(node_controller_child), group_leader),
+    ct:pal("self GL: ~p, GL1: ~p, GL2: ~p~n", [group_leader(), GL1, GL2]),
+    group_leader(whereis(gl1), whereis(node_controller_child)),
+    {group_leader, GL3} = process_info(whereis(node_controller), group_leader),
+    {group_leader, GL4} = process_info(whereis(node_controller_child), group_leader),
+    ct:pal("self GL: ~p, GL3: ~p, GL4: ~p~n", [group_leader(), GL3, GL4]),
+    timer:sleep(30000).
 
 test2(_Config) ->
     timer:sleep(2000).

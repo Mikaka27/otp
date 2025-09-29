@@ -54,7 +54,8 @@ MODULES = \
 	diameter_watchdog_SUITE \
 	diameter_test_SUITE \
 	example_cth \
-	node_controller
+	node_controller \
+	example_group_leader
 
 DATA = \
 	diameter_codec_SUITE_data/avps.dia \

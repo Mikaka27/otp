@@ -13,6 +13,11 @@ start() ->
     spawn(fun() -> init() end).
 
 init() ->
+    register(node_controller, self()),
+    spawn_link(fun() ->
+        register(node_controller_child, self()),
+        timer:sleep(infinity)
+    end),
     print_info(),
     ct:comment("Test"),
     print_info(),
