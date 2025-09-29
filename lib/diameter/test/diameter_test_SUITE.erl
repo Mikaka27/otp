@@ -77,11 +77,17 @@ groups() ->
 init_per_suite(Config) ->
     ?XL("init_per_suite -> entry with"
         "~n   Config: ~p", [Config]),
-    ?DUTIL:init_per_suite(Config).
+    Tracer = spawn(fun F() -> receive M -> ct:pal("~p~n", [M]), F() end end),
+    Session = trace:session_create(test, Tracer, []),
+    trace:process(Session, all, true, [call]),
+    trace:function(Session, {erlang, group_leader, 2}, true, []),
+    ?DUTIL:init_per_suite([{session, Session} | Config]).
 
 end_per_suite(Config) ->
     ?XL("end_per_suite -> entry with"
         "~n   Config: ~p", [Config]),
+    trace:session_destroy(proplists:get_value(session, Config)),
+    exit(proplists:get_value(tracer, Config), kill),
     ?DUTIL:end_per_suite(Config).
 
 init_per_group(_GroupName, Config) ->
