@@ -88,21 +88,31 @@ terminate(#state{node_controller = Pid}) ->
     exit(Pid, kill),
     ok.
 
-comment(NodeController, Comment) ->
-    comment(NodeController, Comment, 10000),
-    receive_ok(10000).
-
-comment(_NodeController, _Comment, 0) ->
-    ok;
-comment(NodeController, Comment, Count) ->
+comment(NodeController, "post_end_per_testcase") ->
     Self = self(),
-    spawn(fun() -> NodeController ! {Self, Comment} end),
-    comment(NodeController, Comment, Count - 1).
-
-receive_ok(0) ->
+    spawn(fun() ->
+        timer:sleep(5000),
+        NodeController ! {Self, "post_end_per_testcase"}
+    end),
     ok;
-receive_ok(Count) ->
-    receive
-        ok -> ok
-    end,
-    receive_ok(Count - 1).
+comment(_NodeController, _Comment) ->
+    ok.
+
+% comment(NodeController, Comment) ->
+%     comment(NodeController, Comment, 10000),
+%     receive_ok(10000).
+
+% comment(_NodeController, _Comment, 0) ->
+%     ok;
+% comment(NodeController, Comment, Count) ->
+%     Self = self(),
+%     spawn(fun() -> NodeController ! {Self, Comment} end),
+%     comment(NodeController, Comment, Count - 1).
+
+% receive_ok(0) ->
+%     ok;
+% receive_ok(Count) ->
+%     receive
+%         ok -> ok
+%     end,
+%     receive_ok(Count - 1).

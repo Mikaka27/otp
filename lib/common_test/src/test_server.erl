@@ -437,8 +437,8 @@ run_test_case_apply(Mod, Func, Args, Name, RunInit, TimetrapData) ->
     TCCallback = get(test_server_testcase_callback),
     LogOpts = get(test_server_logopts),
     Ref = make_ref(),
-	S = try throw(42) catch _ : _ : ST -> ST end,
-	ct:pal("~p, self: ~p, Group Leader: ~p, ST: ~p~n~n~n", [?FUNCTION_NAME, self(), group_leader(), S]),
+	% S = try throw(42) catch _ : _ : ST -> ST end,
+	% ct:pal("~p, self: ~p, Group Leader: ~p, ST: ~p~n~n~n", [?FUNCTION_NAME, self(), group_leader(), S]),
     Pid =
 	spawn_link(
           run_test_case_eval_fun(Mod, Func, Args, Name, Ref,

@@ -73,6 +73,7 @@ handle_info({'DOWN',Ref,process,_,_Reason}, #{parent_gl_monitor := Ref} = St) ->
 
 handle_info({io_request,_From,_ReplyAs,_Req} = IoReq,
 	    #{parent_gl_pid := ParentGL} = St) ->
+    % ct:pal("IoRequest: ~p~n", [IoReq]),
     ParentGL ! IoReq,
     {noreply,St};
 

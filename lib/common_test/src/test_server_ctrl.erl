@@ -1143,7 +1143,7 @@ init_tester(Mod, Func, Args, Dir, Name, {_,_,MinLev}=Levels,
     test_server_io:set_gl_props([{levels,Levels},
 				 {auto_nl,not lists:member(no_nl, LogOpts)},
 				 {reject_io_reqs,RejectIoReqs}]),
-	ct:pal("~p setting group leader of ~p to ~p~n", [?FUNCTION_NAME, self(), test_server_io:get_gl(true)]),
+	% ct:pal("~p setting group leader of ~p to ~p~n", [?FUNCTION_NAME, self(), test_server_io:get_gl(true)]),
     group_leader(test_server_io:get_gl(true), self()),
     {ElapsedTime,Result} = ts_tc(Mod, Func, Args),
     print(major, "=elapsed_time  ~w", [ElapsedTime]),
@@ -3789,9 +3789,9 @@ run_test_case(Ref, Num, Mod, Func, Args, RunInit, TimetrapData, Mode) ->
 
 run_test_case1(Ref, Num, Mod, Func, Args, RunInit,
 	       TimetrapData, Mode, Main) ->
-	ct:pal("~p setting group leader of ~p to ~p~n", [?FUNCTION_NAME, self(), test_server_io:get_gl(Main == self())]),
+	% ct:pal("~p setting group leader of ~p to ~p~n", [?FUNCTION_NAME, self(), test_server_io:get_gl(Main == self())]),
     group_leader(test_server_io:get_gl(Main == self()), self()),
-	ct:pal("Group leader that was set, self: ~p, GL: ~p~n", [self(), group_leader()]),
+	% ct:pal("Group leader that was set, self: ~p, GL: ~p~n", [self(), group_leader()]),
 
     %% if io is being buffered, send start io session message
     %% (no matter if case runs on parallel or main process)

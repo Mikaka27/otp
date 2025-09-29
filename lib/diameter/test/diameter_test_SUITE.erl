@@ -63,12 +63,14 @@ suite() ->
      {ct_hooks, [example_cth]}].
 
 all() ->
-    [{group, normal},
-     {group, shuffle},
-     {group, parallel}].
+    [{group, single}].
+    %  {group, normal},
+    %  {group, shuffle},
+    %  {group, parallel}].
 
 groups() ->
-    [{normal, [], [test1, test2, test3]},
+    [{single, [], [test1]},
+     {normal, [], [test1, test2, test3]},
      {shuffle, [shuffle], [test1, test2, test3]},
      {parallel, [parallel], [test1, test2, test3]}].
 
@@ -117,6 +119,7 @@ end_per_testcase(Case, Config) when is_list(Config) ->
     Config.
 
 test1(_Config) ->
+    % observer:start(),
     timer:sleep(1000).
 
 test2(_Config) ->

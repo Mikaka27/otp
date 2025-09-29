@@ -155,6 +155,7 @@ set_props(GL, PropList) ->
 
 init([TSIO]) ->
     ct_util:mark_process(group_leader),
+	register(?MODULE, self()),
     EscChars = case application:get_env(test_server, esc_chars) of
 		   {ok,ECBool} -> ECBool;
 		   _           -> true
@@ -273,6 +274,18 @@ handle_info(Msg, #st{tc_supervisor=Pid}=St) when is_pid(Pid) ->
     %% reached by sending a message to the group leader. Therefore
     %% we'll need to forward any non-recognized messaged to the test
     %% case supervisor.
+	case Msg of
+		{comment, _Comment} ->
+			Self = self(),
+			{backtrace, BT} = process_info(Pid, backtrace),
+			{current_stacktrace, CT} = process_info(Pid, current_stacktrace),
+			{current_function, CF} = process_info(Pid, current_function),
+			{group_leader, GL} = process_info(Pid, group_leader),
+			% {registered_name, RN} = process_info(Pid, registered_name),
+			ct:pal("Self: ~p, Received: ~p, forwarding to: ~p~nBT: ~p~nCT: ~p~nCF: ~p~nGL: ~p~n",[Self, Msg, Pid, BT, CT, CF, GL]);
+		_ ->
+			ok
+	end,
     Pid ! Msg,
     {noreply,St};
 handle_info(_Msg, #st{}=St) ->
