@@ -45,7 +45,10 @@ print_info() ->
 loop() ->
     receive
         {From, Comment} ->
-            ct:comment(Comment),
-            From ! ok
+            comment(From, Comment)
     end,
     loop().
+
+comment(From, Comment) ->
+    ct:comment(Comment),
+    From ! ok.
