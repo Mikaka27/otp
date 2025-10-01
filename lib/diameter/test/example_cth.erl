@@ -29,6 +29,102 @@
 %% Always called before any other callback function. Use this to initiate
 %% any common state.
 init(_Id, _Opts) ->
+    Now = fun() ->
+        {MS,S,US} = os:timestamp(),
+        {{Year,Month,Day}, {Hour,Min,Sec}} = calendar:now_to_local_time({MS,S,US}),
+        MilliSec = trunc(US/1000),
+        lists:flatten(io_lib:format("~4.10.0B-~2.10.0B-~2.10.0B "
+                                "~2.10.0B:~2.10.0B:~2.10.0B.~3.10.0B",
+                                [Year,Month,Day,Hour,Min,Sec,MilliSec]))
+    end,
+    WriteToFile = fun(Format) ->
+        file:write_file("/mnt/D/Projects/otp/out.txt", Format, [append])
+    end,
+    Tracer = spawn(fun F() ->
+        try
+            receive
+                {trace, Pid, call, {erlang, group_leader, [GL, Target]}} = M ->
+                    PidInfo = process_info(Pid),
+                    GLInfo = process_info(GL),
+                    TargetInfo = process_info(Target),
+                    TargetGLInfo = case process_info(Target, group_leader) of
+                        {group_leader, TargetGL} ->
+                            process_info(TargetGL);
+                        undefined ->
+                            undefined
+                    end,
+                    WriteToFile(io_lib:fwrite("~n~nNow: ~p~nMessage: ~p~nPidInfo: ~p~nGLInfo: ~p~nTargetInfo: ~p~nTargetGLInfo: ~p~nStatus: ~p~n", [Now(), M, PidInfo, GLInfo, TargetInfo, TargetGLInfo, ct:get_status()]));
+                {trace, Pid, call, _} = M ->
+                    PidInfo = process_info(Pid),
+                    GLInfo = case process_info(Pid, group_leader) of
+                        {group_leader, GL} ->
+                            process_info(GL);
+                        undefined ->
+                            undefined
+                    end,
+                    ParentInfo = case process_info(Pid, parent) of
+                        {parent, Parent} ->
+                            process_info(Parent);
+                        undefined ->
+                            undefined
+                    end,
+                    WriteToFile(io_lib:fwrite("~n~nNow: ~p~nMessage: ~p~nPidInfo: ~p~nParentInfo: ~p~nGLInfo: ~p~nStatus: ~p~n", [Now(), M, PidInfo, ParentInfo, GLInfo, ct:get_status()]));
+                {trace, Pid, send, {comment, _Comment}, To} = M ->
+                    PidInfo = process_info(Pid),
+                    ToInfo = process_info(To),
+                    ToGLInfo = case process_info(To, group_leader) of
+                        {group_leader, ToGL} ->
+                            process_info(ToGL);
+                        undefined ->
+                            undefined
+                    end,
+                    WriteToFile(io_lib:fwrite("~n~nNow: ~p~nMessage: ~p~nPidInfo: ~p~nToInfo: ~p~nToGLInfo: ~p~nStatus: ~p~n", [Now(), M, PidInfo, ToInfo, ToGLInfo, ct:get_status()]));
+                {trace, Pid, 'receive', {comment, _Comment}} = M ->
+                    PidInfo = process_info(Pid),
+                    GLInfo = case process_info(Pid, group_leader) of
+                        {group_leader, GL} ->
+                            process_info(GL);
+                        undefined ->
+                            undefined
+                    end,
+                    WriteToFile(io_lib:fwrite("~n~nNow: ~p~nMessage: ~p~nPidInfo: ~p~nGLInfo: ~p~nStatus: ~p~n", [Now(), M, PidInfo, GLInfo, ct:get_status()]));
+                _Other ->
+                    ok
+            end
+        catch C : R : ST ->
+            WriteToFile(io_lib:fwrite("~n~nNow: ~p~nEXCEPTION: ~p:~p:~p~n", [Now(), C, R, ST]))
+        end,
+        F()
+    end),
+    Session = trace:session_create(test, Tracer, []),
+    trace:process(Session, all, true, [call, send, 'receive']),
+    trace:function(Session, {erlang, group_leader, 2}, true, [local]),
+    % trace:function(Session, {tes_cth, init, 2}, true, [local]),
+    % trace:function(Session, {tes_cth, call_init_tc, 3}, true, [local]),
+    % trace:function(Session, {tes_cth, call_end_tc, 4}, true, [local]),
+    % trace:function(Session, {tes_cth, init_testcase, 2}, true, [local]),
+    % trace:function(Session, {tes_cth, end_testcase, 4}, true, [local]),
+    % trace:function(Session, {tes_rcs, start, 2}, true, [local]),
+    % trace:function(Session, {tes_rcs, init, 2}, true, [local]),
+    % trace:function(Session, {tes_rcs_lib, do_node_seq, 5}, true, [local]),
+    % trace:function(Session, {tes_rcs_lib, node_cmd, 5}, true, [local]),
+    trace:function(Session, {node_controller, start, 0}, true, [local]),
+    trace:function(Session, {node_controller, init, 0}, true, [local]),
+    trace:function(Session, {node_controller, comment, 2}, true, [local]),
+    trace:send(Session, true, []),
+    trace:recv(Session, true, []),
+
+    Self = self(),
+    SelfInfo = process_info(Self),
+    {parent, Parent} = process_info(Self, parent),
+    ParentInfo = process_info(Parent),
+    GL = group_leader(),
+    GLInfo = process_info(GL),
+    Args = init:get_arguments(),
+    {current_stacktrace, CT} = process_info(Self, current_stacktrace),
+
+    WriteToFile(io_lib:fwrite("~n~nNow: ~p~nMod: ~p, Func:~p~nSelf: ~p~nSelfInfo: ~p~nParent: ~p~nParentInfo: ~p~nGL: ~p~nGLInfo: ~p~nCmd: ~p~nCT: ~p~n", [Now(), ?MODULE, ?FUNCTION_NAME, Self, SelfInfo, Parent, ParentInfo, GL, GLInfo, Args, CT])),
+
     Pid = node_controller:start(),
     {ok, #state{node_controller = Pid}}.
 
