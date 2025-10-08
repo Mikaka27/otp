@@ -89,34 +89,35 @@ all() ->
     all(suite).
 
 all(suite) ->
-    lists:reverse(
-      [
-       crash_groups, crash_all, bad_return_groups, bad_return_all,
-       illegal_values_groups, illegal_values_all, alter_groups, alter_all,
-       alter_all_to_skip, alter_all_from_skip,
-       one_cth, two_cth, faulty_cth_no_init, faulty_cth_id_no_init,
-       faulty_cth_exit_in_init, faulty_cth_exit_in_id,
-       faulty_cth_exit_in_init_scope_suite, minimal_cth,
-       minimal_and_maximal_cth, faulty_cth_undef,
-       scope_per_suite_cth, scope_per_group_cth, scope_suite_cth,
-       scope_suite_group_only_cth,
-       scope_per_suite_state_cth, scope_per_group_state_cth,
-       scope_suite_state_cth,
-       fail_pre_suite_cth, double_fail_pre_suite_cth,
-       fail_post_suite_cth, skip_pre_suite_cth, skip_pre_end_cth,
-       skip_pre_init_tc_cth, fail_post_init_tc_cth,
-       skip_post_suite_cth, recover_post_suite_cth, update_config_cth,
-       update_config_cth2,
-       ct_hooks_order_test_cth, ct_hooks_order_config_suite_cth,
-       ct_hooks_order_config_ips_cth,
-       state_update_cth, update_result_cth, options_cth, same_id_cth,
-       fail_n_skip_with_minimal_cth, prio_cth, no_config,
-       no_init_suite_config, no_init_config, no_end_config,
-       failed_sequence, repeat_force_stop, config_clash,
-       callbacks_on_skip, fallback, data_dir,
-       {group, cth_log_redirect}
-      ]
-    ).
+    % lists:reverse(
+    %   [
+    %    crash_groups, crash_all, bad_return_groups, bad_return_all,
+    %    illegal_values_groups, illegal_values_all, alter_groups, alter_all,
+    %    alter_all_to_skip, alter_all_from_skip,
+    %    one_cth, two_cth, faulty_cth_no_init, faulty_cth_id_no_init,
+    %    faulty_cth_exit_in_init, faulty_cth_exit_in_id,
+    %    faulty_cth_exit_in_init_scope_suite, minimal_cth,
+    %    minimal_and_maximal_cth, faulty_cth_undef,
+    %    scope_per_suite_cth, scope_per_group_cth, scope_suite_cth,
+    %    scope_suite_group_only_cth,
+    %    scope_per_suite_state_cth, scope_per_group_state_cth,
+    %    scope_suite_state_cth,
+    %    fail_pre_suite_cth, double_fail_pre_suite_cth,
+    %    fail_post_suite_cth, skip_pre_suite_cth, skip_pre_end_cth,
+    %    skip_pre_init_tc_cth, fail_post_init_tc_cth,
+    %    skip_post_suite_cth, recover_post_suite_cth, update_config_cth,
+    %    update_config_cth2,
+    %    ct_hooks_order_test_cth, ct_hooks_order_config_suite_cth,
+    %    ct_hooks_order_config_ips_cth,
+    %    state_update_cth, update_result_cth, options_cth, same_id_cth,
+    %    fail_n_skip_with_minimal_cth, prio_cth, no_config,
+    %    no_init_suite_config, no_init_config, no_end_config,
+    %    failed_sequence, repeat_force_stop, config_clash,
+    %    callbacks_on_skip, fallback, data_dir,
+    %    {group, cth_log_redirect}
+    %   ]
+    % ).
+    [group_leader_cth].
 
 groups() ->
     [
@@ -474,6 +475,10 @@ crash_all(Config) ->
     CfgFile = gen_config(?FUNCTION_NAME,[{post_all_return,crash}],Config),
     do_test(?FUNCTION_NAME, "all_and_groups_SUITE.erl", [all_and_groups_cth],
             Config, ok, 2, [{config,CfgFile}]).
+
+group_leader_cth(Config) when is_list(Config) ->
+    do_test(group_leader_cth, "ct_hooks_group_leader_SUITE.erl",
+	    [group_leader_cth],Config).
 
 %%%-----------------------------------------------------------------
 %%% HELP FUNCTIONS
@@ -2949,6 +2954,9 @@ test_events(crash_all) ->
      {?eh,cth,{empty_cth,terminate,[[]]}},
      {?eh,stop_logging,[]}
     ];
+
+test_events(group_leader_cth) ->
+    ok;
 
 test_events(ok) ->
     ok.
