@@ -199,20 +199,30 @@ call_id(#ct_hook_config{ module = Mod, opts = Opts} = Hook, Config, Scope) ->
     {Config, Hook#ct_hook_config{ id = Id, scope = scope(Scope)}}.
 	
 call_init(#ct_hook_config{ module = Mod, opts = Opts, id = Id, prio = P} = Hook,
-	  Config, _Meta) ->
-    case Mod:init(Id, Opts) of
-	{ok, NewState} when P =:= undefined ->
-	    {Config, Hook#ct_hook_config{ state = NewState, prio = 0 } };
-	{ok, NewState} ->
-	    {Config, Hook#ct_hook_config{ state = NewState } };
-	{ok, NewState, Prio} when P =:= undefined ->
-	    %% Only set prio if not already set when installing hook
-	    {Config, Hook#ct_hook_config{ state = NewState, prio = Prio } };
-	{ok, NewState, _} ->
-	    {Config, Hook#ct_hook_config{ state = NewState } };
-	NewState -> %% Keep for backward compatibility reasons
-	    {Config, Hook#ct_hook_config{ state = NewState } }
-    end.    
+          Config, _Meta) ->
+    OriginalGL = group_leader(),
+    try
+        TcGL = test_server_io:get_gl(true),
+        case OriginalGL =:= TcGL of
+            true -> ok;
+            false -> group_leader(TcGL, self())
+        end,
+        case Mod:init(Id, Opts) of
+            {ok, NewState} when P =:= undefined ->
+                {Config, Hook#ct_hook_config{ state = NewState, prio = 0 } };
+            {ok, NewState} ->
+                {Config, Hook#ct_hook_config{ state = NewState } };
+            {ok, NewState, Prio} when P =:= undefined ->
+                %% Only set prio if not already set when installing hook
+                {Config, Hook#ct_hook_config{ state = NewState, prio = Prio } };
+            {ok, NewState, _} ->
+                {Config, Hook#ct_hook_config{ state = NewState } };
+            NewState -> %% Keep for backward compatibility reasons
+                {Config, Hook#ct_hook_config{ state = NewState } }
+        end
+    after
+        group_leader(OriginalGL, self())
+    end.
 
 call_terminate(#ct_hook_config{ module = Mod, state = State} = Hook, _, _) ->
     catch_apply(Mod,terminate,[State], ok),

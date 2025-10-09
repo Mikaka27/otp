@@ -100,7 +100,7 @@ all(suite) ->
        fail_n_skip_with_minimal_cth, prio_cth, no_config,
        no_init_suite_config, no_init_config, no_end_config,
        failed_sequence, repeat_force_stop, config_clash,
-       callbacks_on_skip, fallback, data_dir,
+       callbacks_on_skip, fallback, data_dir, group_leader_cth,
        cth_log, cth_log_formatter, cth_log_unexpect
       ]
     ).
@@ -462,6 +462,10 @@ crash_all(Config) ->
     CfgFile = gen_config(?FUNCTION_NAME,[{post_all_return,crash}],Config),
     do_test(?FUNCTION_NAME, "all_and_groups_SUITE.erl", [all_and_groups_cth],
             Config, ok, 2, [{config,CfgFile}]).
+
+group_leader_cth(Config) when is_list(Config) ->
+    do_test(group_leader_cth, "ct_cth_empty_SUITE.erl",
+	    [group_leader_cth],Config).
 
 %%%-----------------------------------------------------------------
 %%% HELP FUNCTIONS
@@ -2817,6 +2821,15 @@ test_events(crash_all) ->
                     {error,"all_and_groups_cth:post_all/3 CTH call failed"}}}},
      {?eh,test_done,{'DEF','STOP_TIME'}},
      {?eh,cth,{empty_cth,terminate,[[]]}},
+     {?eh,stop_logging,[]}
+    ];
+
+test_events(group_leader_cth) ->
+    [
+     {?eh,start_logging,{'DEF','RUNDIR'}},
+     {?eh,test_start,{'DEF',{'START_TIME','LOGDIR'}}},
+     {?eh,cth,{group_leader_cth,init,['_','_',true]}},
+     {?eh,test_done,{'DEF','STOP_TIME'}},
      {?eh,stop_logging,[]}
     ];
 
