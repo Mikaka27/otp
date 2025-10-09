@@ -50,7 +50,7 @@
 -compile(export_all).
 
 id(Opts) ->
-    ?COMMENT(Opts),
+    % ?COMMENT(Opts),
     empty_cth:id(Opts).
 
 init(Id, Opts) ->
@@ -62,23 +62,23 @@ init(Id, Opts) ->
     {ok, State}.
 
 pre_init_per_suite(Suite, Config, State) ->
-    ?COMMENT(Suite, Config, State),
+    % ?COMMENT(Suite, Config, State),
     empty_cth:pre_init_per_suite(Suite,Config,State).
 
 post_init_per_suite(Suite, Config, Return, State) ->
-    ?COMMENT(Suite, Config, Return, State),
+    % ?COMMENT(Suite, Config, Return, State),
     empty_cth:post_init_per_suite(Suite, Config, Return, State).
 
 pre_end_per_suite(Suite, Config, State) ->
-    ?COMMENT(Suite, Config, State),
+    % ?COMMENT(Suite, Config, State),
     empty_cth:pre_end_per_suite(Suite, Config, State).
 
 post_end_per_suite(Suite, Config, Return, State) ->
-    ?COMMENT(Suite, Config, Return, State),
+    % ?COMMENT(Suite, Config, Return, State),
     empty_cth:post_end_per_suite(Suite, Config, Return, State).
 
 pre_init_per_group(Suite, Group, Config, State) ->
-    ?COMMENT(Suite, Group, Config, State),
+    % ?COMMENT(Suite, Group, Config, State),
     empty_cth:pre_init_per_group(Suite, Group, Config, State).
 
 post_init_per_group(Suite, Group, Config, Return, State) ->
@@ -112,34 +112,34 @@ on_tc_skip(Suite, TC, Reason, State) ->
 terminate(State) ->
     empty_cth:terminate(State).
 
-loop() ->
-    receive
-        {From, {comment, Func}} ->
-            ct:comment(io_lib:format("~p", [Func])),
-            From ! ok,
-            loop();
-        {From, {comment, Func, A1}} ->
-            ct:comment(io_lib:format("~p(~p)", [Func, A1])),
-            From ! ok,
-            loop();
-        {From, {comment, Func, A1, A2}} ->
-            ct:comment(io_lib:format("~p(~p, ~p)", [Func, A1, A2])),
-            From ! ok,
-            loop();
-        {From, {comment, Func, A1, A2, A3}} ->
-            ct:comment(io_lib:format("~p(~p, ~p, ~p)", [Func, A1, A2, A3])),
-            From ! ok,
-            loop();
-        {From, {comment, Func, A1, A2, A3, A4}} ->
-            ct:comment(io_lib:format("~p(~p, ~p, ~p, ~p)", [Func, A1, A2, A3, A4])),
-            From ! ok,
-            loop();
-        {From, {comment, Func, A1, A2, A3, A4, A5}} ->
-            ct:comment(io_lib:format("~p(~p, ~p, ~p, ~p, ~p)", [Func, A1, A2, A3, A4, A5])),
-            From ! ok,
-            loop();
-        stop ->
-            ok;
-        _Other ->
-            loop()
-    end.
+% loop() ->
+%     receive
+%         {From, {comment, Func}} ->
+%             ct:comment(io_lib:format("~p", [Func])),
+%             From ! ok,
+%             loop();
+%         {From, {comment, Func, A1}} ->
+%             ct:comment(io_lib:format("~p(~p)", [Func, A1])),
+%             From ! ok,
+%             loop();
+%         {From, {comment, Func, A1, A2}} ->
+%             ct:comment(io_lib:format("~p(~p, ~p)", [Func, A1, A2])),
+%             From ! ok,
+%             loop();
+%         {From, {comment, Func, A1, A2, A3}} ->
+%             ct:comment(io_lib:format("~p(~p, ~p, ~p)", [Func, A1, A2, A3])),
+%             From ! ok,
+%             loop();
+%         {From, {comment, Func, A1, A2, A3, A4}} ->
+%             ct:comment(io_lib:format("~p(~p, ~p, ~p, ~p)", [Func, A1, A2, A3, A4])),
+%             From ! ok,
+%             loop();
+%         {From, {comment, Func, A1, A2, A3, A4, A5}} ->
+%             ct:comment(io_lib:format("~p(~p, ~p, ~p, ~p, ~p)", [Func, A1, A2, A3, A4, A5])),
+%             From ! ok,
+%             loop();
+%         stop ->
+%             ok;
+%         _Other ->
+%             loop()
+%     end.
