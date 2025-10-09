@@ -63,16 +63,18 @@ suite() ->
      {ct_hooks, [example_cth]}].
 
 all() ->
-    [{group, single}].
-    %  {group, normal},
-    %  {group, shuffle},
-    %  {group, parallel}].
+    % [{group, single}].
+    [{group, normal},
+     {group, shuffle},
+     {group, parallel},
+     {group, sequence}].
 
 groups() ->
     [{single, [], [test1]},
      {normal, [], [test1, test2, test3]},
      {shuffle, [shuffle], [test1, test2, test3]},
-     {parallel, [parallel], [test1, test2, test3]}].
+     {parallel, [parallel], [test1, test2, test3]},
+     {sequence, [sequence], [test1, test2, test3]}].
 
 init_per_suite(Config) ->
     ?XL("init_per_suite -> entry with"

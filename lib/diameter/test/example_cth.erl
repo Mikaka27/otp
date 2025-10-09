@@ -17,6 +17,7 @@
 
 -export([pre_init_per_testcase/3]).
 -export([post_init_per_testcase/3]).
+-export([pre_end_per_testcase/3]).
 -export([post_end_per_testcase/4]).
 
 % -export([on_tc_skip/4]).
@@ -29,6 +30,7 @@
 %% Always called before any other callback function. Use this to initiate
 %% any common state.
 init(_Id, _Opts) ->
+    ct:comment("Test"),
     Now = fun() ->
         {MS,S,US} = os:timestamp(),
         {{Year,Month,Day}, {Hour,Min,Sec}} = calendar:now_to_local_time({MS,S,US}),
@@ -168,17 +170,21 @@ post_end_per_group(_Suite, _Group, _Config, Return, #state{node_controller = Pid
     {Return, State}.
 
 %% Called before each init_per_testcase.
-pre_init_per_testcase(_TC,Config,#state{node_controller = Pid} = State) ->
-    comment(Pid, "pre_init_per_testcase"),
+pre_init_per_testcase(TC,Config,#state{node_controller = Pid} = State) ->
+    comment(Pid, io_lib:format("pre_init_per_testcase: ~p", [TC])),
     {Config, State}.
 
-post_init_per_testcase(_TC,Config,#state{node_controller = Pid} = State) ->
-    comment(Pid, "post_init_per_testcase"),
+post_init_per_testcase(TC,Config,#state{node_controller = Pid} = State) ->
+    comment(Pid, io_lib:format("post_init_per_testcase: ~p", [TC])),
+    {Config, State}.
+
+pre_end_per_testcase(TC,Config,#state{node_controller = Pid} = State) ->
+    comment(Pid, io_lib:format("pre_end_per_testcase: ~p", [TC])),
     {Config, State}.
 
 %% Called after each end_per_testcase.
-post_end_per_testcase(_TC,_Config,Return,#state{node_controller = Pid} = State) ->
-    comment(Pid, "post_end_per_testcase"),
+post_end_per_testcase(TC,_Config,Return,#state{node_controller = Pid} = State) ->
+    comment(Pid, io_lib:format("post_end_per_testcase: ~p", [TC])),
     {Return, State}.
 
 %% Called when a test case is skipped by either user action
@@ -191,15 +197,15 @@ terminate(#state{node_controller = Pid}) ->
     exit(Pid, kill),
     ok.
 
-comment(NodeController, "post_end_per_testcase") ->
-    Self = self(),
-    spawn(fun() ->
-        timer:sleep(5000),
-        NodeController ! {Self, "post_end_per_testcase"}
-    end),
-    ok;
-comment(_NodeController, _Comment) ->
-    ok.
+% comment(NodeController, "post_end_per_testcase") ->
+%     Self = self(),
+%     spawn(fun() ->
+%         timer:sleep(5000),
+%         NodeController ! {Self, "post_end_per_testcase"}
+%     end),
+%     ok;
+% comment(_NodeController, _Comment) ->
+%     ok.
 
 % comment(NodeController, Comment) ->
 %     comment(NodeController, Comment, 10000),
@@ -211,6 +217,16 @@ comment(_NodeController, _Comment) ->
 %     Self = self(),
 %     spawn(fun() -> NodeController ! {Self, Comment} end),
 %     comment(NodeController, Comment, Count - 1).
+
+% comment(NodeController, Comment) ->
+%     ct:pal("~p: GL: ~p, TcGL: ~p~n", [Comment, group_leader(), test_server_io:get_gl(true)]),
+%     NodeController ! {self(), Comment},
+%     receive
+%         ok -> ok
+%     end.
+comment(_NodeController, Comment) ->
+    ct:comment(Comment).
+
 
 % receive_ok(0) ->
 %     ok;

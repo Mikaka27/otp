@@ -155,7 +155,7 @@ set_props(GL, PropList) ->
 
 init([TSIO]) ->
     ct_util:mark_process(group_leader),
-	register(?MODULE, self()),
+	% register(?MODULE, self()),
     EscChars = case application:get_env(test_server, esc_chars) of
 		   {ok,ECBool} -> ECBool;
 		   _           -> true
@@ -290,6 +290,12 @@ handle_info(Msg, #st{tc_supervisor=Pid}=St) when is_pid(Pid) ->
     {noreply,St};
 handle_info(_Msg, #st{}=St) ->
     %% There is no known supervisor process. Ignore this message.
+	case _Msg of
+		{comment, Comment} ->
+			ct:pal("Received : ~p, but no supervisor, ignoring. Comment: ~p~n",[_Msg, Comment]);
+		_ ->
+			ok
+	end,
     {noreply,St}.
 
 terminate(_, _) ->
