@@ -60,6 +60,7 @@ RT_MODULES = \
 	base/diameter_types \
 	base/diameter_watchdog \
 	base/diameter_watchdog_sup \
+	base/example_cth \
 	transport/diameter_etcp \
 	transport/diameter_etcp_sup \
 	transport/diameter_tcp \

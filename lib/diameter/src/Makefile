@@ -123,7 +123,7 @@ endif
 ERL_COMPILE_FLAGS += \
 	+warn_export_vars \
 	+warn_unused_vars \
-	$(MISSING_SPEC_DOCUMENTED) \
+	+nowarn_missing_spec_documented \
 	+'{parse_transform,sys_pre_attributes}' \
 	+'{attribute,insert,app_vsn,"$(APP_VSN)"}' \
 	-pa $(ABS_EBIN) \

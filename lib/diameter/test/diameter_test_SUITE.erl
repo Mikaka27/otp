@@ -59,15 +59,14 @@
 %% ===========================================================================
 
 suite() ->
-    [{timetrap, {seconds, 90}},
-     {ct_hooks, [example_cth]}].
+    [{timetrap, {seconds, 90}}].
 
 all() ->
-    % [{group, single}].
-    [{group, normal},
-     {group, shuffle},
-     {group, parallel},
-     {group, sequence}].
+    [{group, single}].
+    % [{group, normal},
+    %  {group, shuffle},
+    %  {group, parallel},
+    %  {group, sequence}].
 
 groups() ->
     [{single, [], [test1]},

@@ -204,14 +204,14 @@ do_start(Parent, Mode, LogDir, Verbosity, CustomStylesheet) ->
 			   node=node(),
 			   data={StartTime,
 				 lists:flatten(TestLogDir)}}),
-	Self = self(),
-	SelfInfo = catch process_info(Self),
-	GL = proplists:get_value(group_leader, SelfInfo),
-	GLInfo = catch process_info(GL),
-	TcGL = test_server_io:get_gl(true),
-	TcGLInfo = catch process_info(TcGL),
-	file:write_file("/mnt/D/Projects/otp/out.txt", io_lib:fwrite("Self: ~p~nSelfInfo: ~p~nGL: ~p~nGLInfo: ~p~nTcGL: ~p~nTcGLInfo: ~p~n",
-								     [Self, SelfInfo, GL, GLInfo, TcGL, TcGLInfo])),
+	% Self = self(),
+	% SelfInfo = catch process_info(Self),
+	% GL = proplists:get_value(group_leader, SelfInfo),
+	% GLInfo = catch process_info(GL),
+	% TcGL = test_server_io:get_gl(true),
+	% TcGLInfo = catch process_info(TcGL),
+	% file:write_file("/mnt/D/Projects/otp/out.txt", io_lib:fwrite("Self: ~p~nSelfInfo: ~p~nGL: ~p~nGLInfo: ~p~nTcGL: ~p~nTcGLInfo: ~p~n",
+	% 							     [Self, SelfInfo, GL, GLInfo, TcGL, TcGLInfo])),
     %% Initialize ct_hooks
     _ = try ct_hooks:init(Opts) of
 	ok ->
