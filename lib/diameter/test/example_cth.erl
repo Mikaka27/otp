@@ -7,7 +7,7 @@
 -module(example_cth).
 
 %% Mandatory Callbacks
--export([init/2]).
+-export([id/1, init/2]).
 
 -export([pre_init_per_suite/3, post_init_per_suite/4]).
 -export([post_end_per_suite/4]).
@@ -20,6 +20,12 @@
 -export([pre_end_per_testcase/3]).
 -export([post_end_per_testcase/4]).
 
+-export([post_all/3]).
+-export([post_groups/2]).
+
+-export([on_tc_fail/4]).
+-export([on_tc_skip/4]).
+
 % -export([on_tc_skip/4]).
 
 -export([terminate/1]).
@@ -27,10 +33,14 @@
 %% This hook state is threaded through all the callbacks.
 -record(state, {node_controller :: pid()}).
 
+id(_Opts) ->
+    ct:comment("id/1"),
+    11111.
+
 %% Always called before any other callback function. Use this to initiate
 %% any common state.
 init(_Id, _Opts) ->
-    % ct:comment("Test"),
+    ct:comment("init/2"),
     Now = fun() ->
         {MS,S,US} = os:timestamp(),
         {{Year,Month,Day}, {Hour,Min,Sec}} = calendar:now_to_local_time({MS,S,US}),
@@ -99,7 +109,7 @@ init(_Id, _Opts) ->
         F()
     end),
 
-    Self = self(),
+    _Self = self(),
 
     % spawn(fun() ->
     %     Session = trace:session_create(test, Tracer, []),
@@ -124,15 +134,15 @@ init(_Id, _Opts) ->
     % end),
     % receive ok -> ok end,
 
-    SelfInfo = process_info(Self),
-    {parent, Parent} = process_info(Self, parent),
-    ParentInfo = process_info(Parent),
-    GL = group_leader(),
-    GLInfo = process_info(GL),
-    Args = init:get_arguments(),
-    {current_stacktrace, CT} = process_info(Self, current_stacktrace),
+    % SelfInfo = process_info(Self),
+    % {parent, Parent} = process_info(Self, parent),
+    % ParentInfo = process_info(Parent),
+    % GL = group_leader(),
+    % GLInfo = process_info(GL),
+    % Args = init:get_arguments(),
+    % {current_stacktrace, CT} = process_info(Self, current_stacktrace),
 
-    WriteToFile(io_lib:fwrite("~n~nNow: ~p~nMod: ~p, Func:~p~nSelf: ~p~nSelfInfo: ~p~nParent: ~p~nParentInfo: ~p~nGL: ~p~nGLInfo: ~p~nCmd: ~p~nCT: ~p~n", [Now(), ?MODULE, ?FUNCTION_NAME, Self, SelfInfo, Parent, ParentInfo, GL, GLInfo, Args, CT])),
+    % WriteToFile(io_lib:fwrite("~n~nNow: ~p~nMod: ~p, Func:~p~nSelf: ~p~nSelfInfo: ~p~nParent: ~p~nParentInfo: ~p~nGL: ~p~nGLInfo: ~p~nCmd: ~p~nCT: ~p~n", [Now(), ?MODULE, ?FUNCTION_NAME, Self, SelfInfo, Parent, ParentInfo, GL, GLInfo, Args, CT])),
 
     % Pid = node_controller:start(),
     {ok, #state{node_controller = none}}.
@@ -197,7 +207,7 @@ terminate(#state{node_controller = Pid}) when is_pid(Pid) ->
     exit(Pid, kill),
     ok;
 terminate(#state{}) ->
-    Now = fun() ->
+    _Now = fun() ->
         {MS,S,US} = os:timestamp(),
         {{Year,Month,Day}, {Hour,Min,Sec}} = calendar:now_to_local_time({MS,S,US}),
         MilliSec = trunc(US/1000),
@@ -205,19 +215,20 @@ terminate(#state{}) ->
                                 "~2.10.0B:~2.10.0B:~2.10.0B.~3.10.0B",
                                 [Year,Month,Day,Hour,Min,Sec,MilliSec]))
     end,
-    WriteToFile = fun(Format) ->
+    _WriteToFile = fun(Format) ->
         file:write_file("/mnt/D/Projects/otp/out.txt", Format, [append])
     end,
-    Self = self(),
-    SelfInfo = process_info(Self),
-    {parent, Parent} = process_info(Self, parent),
-    ParentInfo = process_info(Parent),
-    GL = group_leader(),
-    GLInfo = process_info(GL),
-    Args = init:get_arguments(),
-    {current_stacktrace, CT} = process_info(Self, current_stacktrace),
+    % Self = self(),
+    % SelfInfo = process_info(Self),
+    % {parent, Parent} = process_info(Self, parent),
+    % ParentInfo = process_info(Parent),
+    % GL = group_leader(),
+    % GLInfo = process_info(GL),
+    % Args = init:get_arguments(),
+    % {current_stacktrace, CT} = process_info(Self, current_stacktrace),
 
-    WriteToFile(io_lib:fwrite("~n~nNow: ~p~nMod: ~p, Func:~p~nSelf: ~p~nSelfInfo: ~p~nParent: ~p~nParentInfo: ~p~nGL: ~p~nGLInfo: ~p~nCmd: ~p~nCT: ~p~n", [Now(), ?MODULE, ?FUNCTION_NAME, Self, SelfInfo, Parent, ParentInfo, GL, GLInfo, Args, CT])),
+    % WriteToFile(io_lib:fwrite("~n~nNow: ~p~nMod: ~p, Func:~p~nSelf: ~p~nSelfInfo: ~p~nParent: ~p~nParentInfo: ~p~nGL: ~p~nGLInfo: ~p~nCmd: ~p~nCT: ~p~n", [Now(), ?MODULE, ?FUNCTION_NAME, Self, SelfInfo, Parent, ParentInfo, GL, GLInfo, Args, CT])),
+    ct:comment("terminate/1"),
     ok.
 
 % comment(NodeController, "post_end_per_testcase") ->
@@ -247,8 +258,25 @@ terminate(#state{}) ->
 %     receive
 %         ok -> ok
 %     end.
-comment(_NodeController, Comment) ->
-    ct:comment(Comment).
+comment(_NodeController, _Comment) ->
+    ok.
+    % ct:comment(Comment).
+
+post_groups(Suite, Groups) ->
+    ct:comment("~w:post_groups(~p, ~p) called", [?MODULE, Suite, Groups]),
+    Groups.
+
+post_all(Suite, Tests, Groups) ->
+    ct:comment("~w:post_all(~p,~p,~p) called", [?MODULE, Suite, Tests, Groups]),
+    Tests.
+
+on_tc_fail(Suite, TC, Reason, State) ->
+    ct:comment("~w:on_tc_fail(~w,~w,~p) called", [?MODULE, Suite, TC, Reason]),
+    State.
+
+on_tc_skip(Suite, TC, Reason, State) ->
+    ct:comment("~w:on_tc_skip(~w,~w,~p) called", [?MODULE, Suite, TC, Reason]),
+    State.
 
 
 % receive_ok(0) ->

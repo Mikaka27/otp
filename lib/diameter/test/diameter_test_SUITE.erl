@@ -59,10 +59,13 @@
 %% ===========================================================================
 
 suite() ->
-    [{timetrap, {seconds, 90}}].
+    % [{timetrap, {seconds, 90}}].
+    [{timetrap, {seconds, 90}},
+     {ct_hooks, [example_cth]}].
 
 all() ->
-    [{group, single}].
+    [{group, normal}].
+    % [{group, single}].
     % [{group, normal},
     %  {group, shuffle},
     %  {group, parallel},
@@ -161,6 +164,8 @@ end_per_group(_GroupName, Config) ->
 
 
 %% This test case can take a *long* time, so if the machine is too slow, skip
+init_per_testcase(test2, Config) ->
+    Config;
 init_per_testcase(Case, Config) when is_list(Config) ->
     ?XL("init_per_testcase(~w) -> entry with"
         "~n   Config: ~p"
@@ -186,14 +191,14 @@ end_per_testcase(Case, Config) when is_list(Config) ->
 
 test1(_Config) ->
     % observer:start(),
-    {group_leader, GL1} = process_info(whereis(node_controller), group_leader),
-    {group_leader, GL2} = process_info(whereis(node_controller_child), group_leader),
-    ct:pal("self GL: ~p, GL1: ~p, GL2: ~p~n", [group_leader(), GL1, GL2]),
-    group_leader(whereis(gl1), whereis(node_controller_child)),
-    {group_leader, GL3} = process_info(whereis(node_controller), group_leader),
-    {group_leader, GL4} = process_info(whereis(node_controller_child), group_leader),
-    ct:pal("self GL: ~p, GL3: ~p, GL4: ~p~n", [group_leader(), GL3, GL4]),
-    timer:sleep(3000).
+    % {group_leader, GL1} = process_info(whereis(node_controller), group_leader),
+    % {group_leader, GL2} = process_info(whereis(node_controller_child), group_leader),
+    % ct:pal("self GL: ~p, GL1: ~p, GL2: ~p~n", [group_leader(), GL1, GL2]),
+    % group_leader(whereis(gl1), whereis(node_controller_child)),
+    % {group_leader, GL3} = process_info(whereis(node_controller), group_leader),
+    % {group_leader, GL4} = process_info(whereis(node_controller_child), group_leader),
+    % ct:pal("self GL: ~p, GL3: ~p, GL4: ~p~n", [group_leader(), GL3, GL4]),
+    1 = 2.
 
 test2(_Config) ->
     timer:sleep(2000).
