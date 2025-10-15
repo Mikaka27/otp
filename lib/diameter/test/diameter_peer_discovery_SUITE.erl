@@ -215,6 +215,8 @@ ns_init(ZoneDir, PrivDir, DataDir) ->
 		      end,
             ?CL("ns_init -> use port number ~p", [PortNum]),
 	    RunNamed = filename:join(DataDir, ?RUN_NS),
+        %% TODO: Fix makefile to preserve execute permissions instead!
+        ok = file:change_mode(RunNamed, 8#00777),
             ?CL("ns_init -> use named ~p", [RunNamed]),
 	    NS = {{127,0,0,1},PortNum},
             ?CL("ns_init -> try open port (exec)"),
