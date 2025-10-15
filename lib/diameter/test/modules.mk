@@ -53,10 +53,17 @@ MODULES = \
 	diameter_transport_SUITE \
 	diameter_watchdog_SUITE \
 	diameter_indirect_inherits_SUITE \
-	diameter_codegen_SUITE
+	diameter_codegen_SUITE \
+	diameter_peer_discovery_SUITE
 
 DATA = \
 	diameter_codec_SUITE_data/avps.dia \
 	diameter_codec_SUITE_data/send.dia \
 	diameter_codec_SUITE_data/recv.dia \
-	diameter_codec_SUITE_data/diameter_test_unknown.erl
+	diameter_codec_SUITE_data/diameter_test_unknown.erl \
+	diameter_peer_discovery_SUITE_data/run-ns \
+	diameter_peer_discovery_SUITE_data/otptest/0.0.0.0.f.7.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.ip6.arpa.zone \
+	diameter_peer_discovery_SUITE_data/otptest/0.0.127.in-addr.arpa.zone \
+	diameter_peer_discovery_SUITE_data/otptest/knot_inc.conf \
+	diameter_peer_discovery_SUITE_data/otptest/otptest.zone
+
