@@ -333,10 +333,12 @@ zone_dir(_TC) ->
     % end.
 
 test(Config) ->
-    % ?CL("begin"),
-    % NS = ns(Config),
-    % NSs = [NS],
-    % Options = [{nameservers,NSs},verbose],
+    ?CL("begin"),
+    NS = ns(Config),
+    NSs = [NS],
+    Options = [{nameservers,NSs},verbose],
+    Name = "ns.otptest",
+    ct:pal("NS: ~p~n", [NS]),
     % Name = "ns.otptest",
     % NameC = caseflip(Name),
     % NameD = NameC ++ ".",
@@ -344,7 +346,7 @@ test(Config) ->
     % IP2 = {127,0,0,254},
     % %%
     % %% nslookup
-    % {ok,Msg1} = inet_res:nslookup(Name, in, a, NSs),
+    {ok,Msg1} = inet_res:lookup(Name, in, naptr, [verbose]),
     % ?CL("nslookup with ~p: ~n      ~p", [Name, Msg1]),
     % [RR1, RR2] = lists:sort(inet_dns:msg(Msg1, anlist)),
     % IP1 = inet_dns:rr(RR1, data),
@@ -443,3 +445,24 @@ test(Config) ->
     %              h_addr_list=[IP1]}} =
     %     inet_res:gethostbyaddr(IP1, Options, infinity),
     ok.
+
+%% Case flip helper, randomly flips the case of about every second [a-zA-Z]
+
+-compile({inline, [caseflip/3]}).
+
+caseflip([C | Cs]) when is_integer(C), $a =< C, C =< $z ->
+    caseflip(Cs, C, $a - $A);
+caseflip([C | Cs]) when is_integer(C), $A =< C, C =< $Z ->
+    caseflip(Cs, C, $A - $a);
+caseflip([C | Cs]) ->
+    [C | caseflip(Cs)];
+caseflip([]) ->
+    [].
+%%
+caseflip(Cs, C, Diff) ->
+    [case 0.5 =< rand:uniform() of
+         true ->
+             C - Diff;
+         false ->
+             C
+     end | caseflip(Cs)].
