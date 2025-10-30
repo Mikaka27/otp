@@ -18,41 +18,24 @@
 #
 # %CopyrightEnd%
 
+# ./create-dropbear-image dropbear 2025.88 [in-file]
 
-# ./create-ssl-image openssl 1.0.2m [in-file] 
-
-case "$1" in
-    "openssl")
-	FAM=openssl
-	VER=$2
-	PFX=https://www.openssl.org/source/openssl-
-	SFX=.tar.gz
-	TMP=tmp.tar.gz
-	;;
-    "libressl")
-	FAM=libressl
-	VER=$2
-	PFX=https://ftp.openbsd.org/pub/OpenBSD/LibreSSL/libressl-
-	SFX=.tar.gz
-	TMP=tmp.tar.gz
+case $1 in
+    dropbear)
+	FAMssh=dropbear
+	VERssh=$2
+	PFX=https://matt.ucc.asn.au/dropbear/releases/dropbear-
+	SFX=.tar.bz2
+	TMP=tmp.tar.bz2
 	;;
     *)
-	echo No lib type
+	echo "Unsupported: $1"
 	exit
-	;;
 esac
 
 INPUT_FILE=$3
 
-case $1$2 in
-    openssl0.9.8[a-l])
-        CONFIG_FLAGS=no-asm
-	;;
-    *)
-	CONFIG_FLAGS=
-	;;
-esac
-
+VER=${FAMssh}${VERssh}
 
 # This way of fetching the tar-file separate from the docker commands makes
 # http-proxy handling way easier. The wget command handles the $https_proxy
@@ -62,23 +45,38 @@ esac
 # Make a Dockerfile. This method simplifies env variable handling considerably:
 cat - > TempDockerFile <<EOF
 
-    FROM ssh_compat_suite-ubuntu:latest
+    FROM  ssh_compat_suite-ubuntu:latest
 
-    LABEL version=$FAM-$VER
+    LABEL ${FAMssh}-version=${VER}
 
     WORKDIR /buildroot
 
     COPY ${TMP} .
     RUN  tar xf ${TMP}
 
-    WORKDIR ${FAM}-${VER}
+    # Build and install
 
-    RUN  ./config --prefix=/buildroot/ssl ${CONFIG_FLAGS}
+    WORKDIR ${FAMssh}-${VERssh}
 
+    RUN apt-get update
+    RUN apt-get -y install openssh-sftp-server
+
+    # Probably VERY dropbear dependent...:
+    RUN ./configure --without-pie \
+                    --prefix=/buildroot/ssh \
+                    --enable-pam \
+                    LDFLAGS=-Wl,-R/buildroot/ssl/lib
     RUN  make
-    RUN  make install_sw
+    RUN  make install
+    RUN  mkdir -p /etc/dropbear
+    RUN  mkdir -p /usr/libexec
+    RUN  ln -s /usr/lib/sftp-server /usr/libexec/sftp-server
 
-    RUN  echo Built ${FAM}-${VER}
+    RUN echo Built ${VER}
+
+    # Start the daemon, but keep it in foreground to avoid killing the container
+    CMD /buildroot/ssh/sbin/dropbear -R -F -p 1234
+
 EOF
 
 # Fetch the tar file. This could be done in an "ADD ..." in the Dockerfile,
@@ -86,16 +84,17 @@ EOF
 
 if [ "x$INPUT_FILE" = "x" ]
 then
-    wget -O $TMP $PFX$VER$SFX
+    wget -O $TMP $PFX$VERssh$SFX
 
 elif [ "x$INPUT_FILE" != "x$TMP" ]
 then
-     echo "Use $INPUT_FILE for input"
+    echo "Use $INPUT_FILE for input"
     cp $INPUT_FILE $TMP
 fi
 
 # Build the image:
-docker build -t ssh_compat_suite-$FAM:$VER -f ./TempDockerFile .
+docker build -t  ssh_compat_suite-ssh:$VER -f ./TempDockerFile .
 
 # Cleaning
 rm -fr ./TempDockerFile $TMP
+

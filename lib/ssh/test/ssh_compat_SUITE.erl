@@ -1099,11 +1099,12 @@ receive_hello(S, Ack) ->
     end.
 
 
-receive_kexinit(_S, <<PacketLen:32, PaddingLen:8, PayloadAndPadding/binary>>)
+receive_kexinit(_S, <<PacketLen:32, PaddingLen:8, PayloadAndPadding/binary>> = Msg)
   when PacketLen < 5000, % heuristic max len to stop huge attempts if packet decoding get out of sync
        size(PayloadAndPadding) >= (PacketLen-1) % Need more bytes?
        ->
     ct:log("Has all ~p packet bytes",[PacketLen]),
+    ct:log("Message: ~s~n", [Msg]),
     PayloadLen = PacketLen - PaddingLen - 1,
     <<Payload:PayloadLen/binary, _Padding:PaddingLen/binary>> = PayloadAndPadding,
     ssh_message:decode(Payload);

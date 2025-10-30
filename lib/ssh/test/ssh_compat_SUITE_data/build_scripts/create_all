@@ -58,15 +58,25 @@ function create_one_image ()
 {
     SSH_FAM=$1
     SSH_VER=$2
-    SSL_FAM=$3
-    SSL_VER=$4
 
     [ "x$SKIP_CREATE_BASE" == "xtrue" ] || ./create-base-image || (echo "Create base failed." >&2; exit 1)
-    ./create-ssl-image $SSL_FAM $SSL_VER  \
-	|| (echo "Create $SSL_FAM $SSL_VER failed." >&2; exit 2)
 
+    case $SSH_FAM in
+    openssh)
+    SSL_FAM=$3
+    SSL_VER=$4
+    ./create-ssl-image $SSL_FAM $SSL_VER  \
+    || (echo "Create $SSL_FAM $SSL_VER failed." >&2; exit 2)
     ./create-ssh-image $SSH_FAM $SSH_VER $SSL_FAM $SSL_VER  \
-	|| (echo "Create $SSH_FAM $SSH_VER on $SSL_FAM $SSL_VER failed." >&2; exit 3)
+    || (echo "Create $SSH_FAM $SSH_VER on $SSL_FAM $SSL_VER failed." >&2; exit 3)
+    ;;
+    dropbear)
+    ./create-dropbear-image $SSH_FAM $SSH_VER  \
+    || (echo "Create $SSH_FAM $SSH_VER failed." >&2; exit 2)
+    *)
+    echo "Unsupported: $1"
+    exit
+esac
 }
 
 
@@ -80,12 +90,16 @@ case ${WHAT_TO_DO} in
 	COMMA=,
 	;;
     build_one)
-	if [ $# != 5 ]
+	if [ $# == 5 ]
 	then
-	    echo "$0 build_one openssh SSH_ver  openssl SSL_ver " && exit 
-	else
 	    create_one_image $2 $3 $4 $5
 	    exit
+	elif [ $# == 3]
+	then
+	    create_one_image $2 $3
+	    exit
+	else
+	    echo "$0 build_one openssh SSH_ver  openssl SSL_ver " && exit 
 	fi
 	;;
     build_all)
