@@ -19,26 +19,42 @@
 # %CopyrightEnd%
 
 # ./create-image openssh 7.3p1 openssl 1.0.2m [in-file]
+# ./create-image dropbear 2025.88 [in-file]
 
 case $1 in
     openssh)
 	FAMssh=openssh
 	VERssh=$2
+	FAMssl=$3
+	VERssl=$4
+	INPUT_FILE=$5
+	VER=${FAMssh}${VERssh}-${FAMssl}${VERssl}
+	FROM=ssh_compat_suite-${FAMssl}:${VERssl}
 	PFX=https://ftp.eu.openbsd.org/pub/OpenBSD/OpenSSH/portable/openssh-
 	SFX=.tar.gz
 	TMP=tmp.tar.gz
+	CONFIGURE_OPTS="--with-ssl-dir=/buildroot/ssl --with-pam"
+	AFTER_CMD="RUN  echo UsePAM yes >> /buildroot/ssh/etc/sshd_config"
+	CMD="/buildroot/ssh/sbin/sshd -D -p 1234"
+	;;
+    dropbear)
+	FAMssh=dropbear
+	VERssh=$2
+	INPUT_FILE=$3
+	VER=${FAMssh}${VERssh}
+	FROM=ssh_compat_suite-ubuntu:latest
+	PFX=https://matt.ucc.asn.au/dropbear/releases/dropbear-
+	SFX=.tar.bz2
+	TMP=tmp.tar.bz2
+	CONFIGURE_OPTS="--enable-pam"
+	AFTER_CMD="RUN  mkdir -p /etc/dropbear"
+	# CMD="/bin/bash"
+	CMD="/buildroot/ssh/sbin/dropbear -R -F -p 1234"
 	;;
     *)
 	echo "Unsupported: $1"
 	exit
 esac
-
-FAMssl=$3
-VERssl=$4
-
-INPUT_FILE=$5
-
-VER=${FAMssh}${VERssh}-${FAMssl}${VERssl}
 
 # This way of fetching the tar-file separate from the docker commands makes
 # http-proxy handling way easier. The wget command handles the $https_proxy
@@ -48,9 +64,9 @@ VER=${FAMssh}${VERssh}-${FAMssl}${VERssl}
 # Make a Dockerfile. This method simplifies env variable handling considerably:
 cat - > TempDockerFile <<EOF
 
-    FROM  ssh_compat_suite-${FAMssl}:${VERssl}
+    FROM  ${FROM}
 
-    LABEL openssh-version=${VER}
+    LABEL ${FAMssh}-version=${VER}
 
     WORKDIR /buildroot
 
@@ -64,17 +80,16 @@ cat - > TempDockerFile <<EOF
     # Probably VERY OpenSSH dependent...:
     RUN ./configure --without-pie \
                     --prefix=/buildroot/ssh \
-                    --with-ssl-dir=/buildroot/ssl \
-                    --with-pam \
+                    ${CONFIGURE_OPTS} \
                     LDFLAGS=-Wl,-R/buildroot/ssl/lib
     RUN  make
     RUN  make install
-    RUN  echo UsePAM yes >> /buildroot/ssh/etc/sshd_config
+    ${AFTER_CMD}
 
     RUN echo Built ${VER}
 
     # Start the daemon, but keep it in foreground to avoid killing the container
-    CMD /buildroot/ssh/sbin/sshd -D -p 1234
+    CMD ${CMD}
 
 EOF
 
