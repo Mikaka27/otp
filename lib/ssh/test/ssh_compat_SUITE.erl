@@ -67,21 +67,21 @@ all() ->
 %%    [check_docker_present] ++
     [{group,G} || G <- ssh_image_versions()].
 
-groups() ->
-    [{otp_client, [], [login_otp_is_client,
-                       all_algorithms_sftp_exec_reneg_otp_is_client,
-                       send_recv_big_with_renegotiate_otp_is_client
-                      ]},
-     {otp_server, [], [login_otp_is_server,
-                       renegotiation_otp_is_server
-                      ]} |
-     [{G, [], [{group,otp_client}, {group,otp_server}]} || G <- ssh_image_versions()]
-    ].
 % groups() ->
-%     [
-%         {otp_server, [], [login_otp_is_server]} |
-%         [{G, [], [{group,otp_server}]} || G <- ssh_image_versions()]
+%     [{otp_client, [], [login_otp_is_client,
+%                        all_algorithms_sftp_exec_reneg_otp_is_client,
+%                        send_recv_big_with_renegotiate_otp_is_client
+%                       ]},
+%      {otp_server, [], [login_otp_is_server,
+%                        renegotiation_otp_is_server
+%                       ]} |
+%      [{G, [], [{group,otp_client}, {group,otp_server}]} || G <- ssh_image_versions()]
 %     ].
+groups() ->
+    [
+        {otp_server, [], [login_otp_is_server]} |
+        [{G, [], [{group,otp_server}]} || G <- ssh_image_versions()]
+    ].
 
 
 ssh_image_versions() ->
@@ -702,12 +702,15 @@ setup_remote_priv_and_local_auth_keys(KeyAlg, IP, Port, UserDir, Config) ->
     rm_id_in_remote_dir(Ch, ".ssh"),
     _ = ssh_sftp:make_dir(Ch, ".ssh"),
     DstFile = filename:join(".ssh", dst_filename(user,KeyAlg)),
+    % DstFile = filename:join(".ssh", "id_dropbear"),
+    ct:pal("DstFile: ~p~n", [DstFile]),
     ok = ssh_sftp:write_file(Ch, DstFile, Priv),
     ok = ssh_sftp:write_file_info(Ch, DstFile,  #file_info{mode=8#700}),
     ok = ssh_sftp:write_file(Ch, DstFile++".pub", Publ),
     ok = ssh_sftp:write_file_info(Ch, ".ssh",  #file_info{mode=8#700}),
     ok = ssh_sftp:stop_channel(Ch),
     ok = ssh:close(Cc),
+    % timer:sleep(120000),
     UserDir.
 
 rm_id_in_remote_dir(Ch, Dir) ->

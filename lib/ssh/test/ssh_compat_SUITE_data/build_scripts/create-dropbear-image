@@ -75,7 +75,7 @@ cat - > TempDockerFile <<EOF
     RUN echo Built ${VER}
 
     # Start the daemon, but keep it in foreground to avoid killing the container
-    CMD /buildroot/ssh/sbin/dropbear -R -F -p 1234
+    CMD /buildroot/ssh/sbin/dropbear -R -F -E -p 1234
 
 EOF
 

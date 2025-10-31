@@ -40,6 +40,7 @@ docker build \
     RUN apt-get -y install sudo iputils-ping tcptraceroute net-tools
     RUN apt-get -y install sshpass expect
     RUN apt-get -y install libpam0g-dev
+    RUN apt-get -y install vim
 
     # A user for the tests
     RUN (echo $PWD; echo $PWD; echo; echo; echo; echo; echo; echo ) | adduser $USER
