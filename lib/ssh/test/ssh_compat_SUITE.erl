@@ -77,6 +77,11 @@ groups() ->
                       ]} |
      [{G, [], [{group,otp_client}, {group,otp_server}]} || G <- ssh_image_versions()]
     ].
+% groups() ->
+%     [
+%         {otp_server, [], [login_otp_is_server]} |
+%         [{G, [], [{group,otp_server}]} || G <- ssh_image_versions()]
+%     ].
 
 
 ssh_image_versions() ->
@@ -1099,14 +1104,13 @@ receive_hello(S, Ack) ->
     end.
 
 
-receive_kexinit(_S, <<PacketLen:32, PaddingLen:8, PayloadAndPadding/binary>> = Msg)
+receive_kexinit(_S, <<PacketLen:32, PaddingLen:8, PayloadAndPadding/binary>>)
   when PacketLen < 5000, % heuristic max len to stop huge attempts if packet decoding get out of sync
        size(PayloadAndPadding) >= (PacketLen-1) % Need more bytes?
        ->
     ct:log("Has all ~p packet bytes",[PacketLen]),
-    ct:log("Message: ~s~n", [Msg]),
     PayloadLen = PacketLen - PaddingLen - 1,
-    <<Payload:PayloadLen/binary, _Padding:PaddingLen/binary>> = PayloadAndPadding,
+    Payload = binary:part(PayloadAndPadding, 0, PayloadLen),
     ssh_message:decode(Payload);
 
 receive_kexinit(S, Ack) ->
