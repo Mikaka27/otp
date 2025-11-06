@@ -612,7 +612,29 @@ handle_event(cast, socket_control, {wait_for_socket, Role},
             {stop, {shutdown,Error}}
     end;
 
-handle_event(internal, socket_ready, {hello,_}=StateName, #data{ssh_params = Ssh0} = D) ->
+handle_event(internal, socket_ready, {hello,client}=StateName, #data{ssh_params = Ssh0} = D) ->
+    VsnMsg = ssh_transport:hello_version_msg(string_version(Ssh0)),
+    send_bytes(VsnMsg, D),
+    case inet:getopts(Socket=D#data.socket, [buffer]) of
+	{ok, [{buffer,Size}]} ->
+	    %% Set the socket to the hello text line handling mode:
+	    inet:setopts(Socket, [{packet, line},
+				  {active, once},
+				  % Expecting the version string which might
+				  % be max ?MAX_PROTO_BANNER_AND_VERSION bytes:
+				  {buffer, ?MAX_PROTO_BANNER_AND_VERSION},
+				  {nodelay,true}]),
+            Time = ?GET_OPT(hello_timeout, Ssh0#ssh.opts, infinity),
+	    {keep_state, D#data{inet_initial_buffer_size=Size}, [{state_timeout,Time,no_hello_received}] };
+
+	Other ->
+            ?call_disconnectfun_and_log_cond("Option return", 
+                                             io_lib:format("Unexpected getopts return:~n  ~p",[Other]),
+                                             StateName, D),
+	    {stop, {shutdown,{unexpected_getopts_return, Other}}}
+    end;
+
+handle_event(internal, socket_ready, {hello,server}=StateName, #data{ssh_params = Ssh0} = D) ->
     VsnMsg = ssh_transport:hello_version_msg(string_version(Ssh0)),
     send_bytes(VsnMsg, D),
     case inet:getopts(Socket=D#data.socket, [buffer]) of
@@ -649,6 +671,15 @@ handle_event(internal, {info_line,Line}, {hello,server}=StateName, D) ->
                         [ssh_dbg:hex_dump(Line, 64)]),
     ?call_disconnectfun_and_log_cond("Protocol mismatch.", Msg, StateName, D),
     {stop, {shutdown,"Protocol mismatch in version exchange. Client sent info lines."}};
+
+handle_event(internal, {version_exchange,Version}, {hello,client}, D0)
+  when length(Version) > ?MAX_PROTO_VERSION ->
+    {Shutdown, D} =
+        ?send_disconnect(?SSH_DISCONNECT_PROTOCOL_ERROR,
+                         io_lib:format("Too long version string, length is ~p",[length(Version)]),
+                         {hello,client},
+                         D0),
+    {stop, Shutdown, D};
 
 handle_event(internal, {version_exchange,Version}, {hello,Role}, D0) ->
     {NumVsn, StrVsn} = ssh_transport:handle_hello_version(Version),

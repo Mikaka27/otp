@@ -112,7 +112,8 @@
          trap_exit_connect/1,
          trap_exit_daemon/1,
          handler_down_before_open/1,
-         ssh_exec_echo/2 % called as an MFA
+         ssh_exec_echo/2, % called as an MFA
+         check_client_rejects_too_long_version_string/1
         ]).
 
 -define(EXEC_TIMEOUT, 10000).
@@ -184,7 +185,8 @@ all() ->
      no_sensitive_leak,
      start_subsystem_on_closed_channel,
      max_channels_option,
-     handler_down_before_open
+     handler_down_before_open,
+     check_client_rejects_too_long_version_string
     ].
 groups() ->
     [{openssh, [], payload() ++ ptty() ++ sock()}].
@@ -2082,6 +2084,26 @@ channel_down_sequence(DownChannelPid, ExecChannelPid, ExecChannelId, MonRef, Con
         end
     after
         ssh_connection:close(ConnRef, ExecChannelId)
+    end.
+
+check_client_rejects_too_long_version_string(_Config) ->
+    Parent = self(),
+    spawn_link(
+      fun() ->
+              {ok,Sl} = gen_tcp:listen(0, [binary]),
+              {ok,{_,Port}} = inet:sockname(Sl),
+              Parent ! {port,Port},
+              {ok,S} = gen_tcp:accept(Sl),
+              ok = gen_tcp:send(S, "SSH-2.0-" ++ lists:duplicate(246, $a) ++ "\r\n"),
+              timer:sleep(infinity)
+      end),
+    receive
+        {port,Port} ->
+            {error, "Protocol error"} = ssh:connect(loopback, Port, [{connect_timeout,2000},
+                                                                     {save_accepted_host, false},
+                                                                     {silently_accept_hosts, true}])
+    after 5000 ->
+            {fail, timeout}
     end.
 
 %%--------------------------------------------------------------------

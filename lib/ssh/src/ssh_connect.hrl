@@ -27,7 +27,8 @@
 -define(DEFAULT_PACKET_SIZE, 65536).
 -define(DEFAULT_WINDOW_SIZE, 10*?DEFAULT_PACKET_SIZE).
 
--define(MAX_PROTO_VERSION, 255).      % Max length of the hello string
+-define(MAX_PROTO_VERSION, 255).              % Max length of the hello string
+-define(MAX_PROTO_BANNER_AND_VERSION, 65536). % Max length of hello string with server banner
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%
