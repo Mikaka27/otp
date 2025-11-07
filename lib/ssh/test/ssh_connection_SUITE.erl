@@ -113,7 +113,8 @@
          trap_exit_daemon/1,
          handler_down_before_open/1,
          ssh_exec_echo/2, % called as an MFA
-         check_client_rejects_too_long_version_string/1
+         check_client_rejects_too_long_version_string/1,
+         check_server_truncates_too_long_version_string/1
         ]).
 
 -define(EXEC_TIMEOUT, 10000).
@@ -186,7 +187,8 @@ all() ->
      start_subsystem_on_closed_channel,
      max_channels_option,
      handler_down_before_open,
-     check_client_rejects_too_long_version_string
+     check_client_rejects_too_long_version_string,
+     check_server_truncates_too_long_version_string
     ].
 groups() ->
     [{openssh, [], payload() ++ ptty() ++ sock()}].
@@ -2094,7 +2096,7 @@ check_client_rejects_too_long_version_string(_Config) ->
               {ok,{_,Port}} = inet:sockname(Sl),
               Parent ! {port,Port},
               {ok,S} = gen_tcp:accept(Sl),
-              ok = gen_tcp:send(S, "SSH-2.0-" ++ lists:duplicate(246, $a) ++ "\r\n"),
+              ok = gen_tcp:send(S, ["SSH-2.0-", lists:duplicate(246, $a), "\r\n"]),
               timer:sleep(infinity)
       end),
     receive
@@ -2104,6 +2106,48 @@ check_client_rejects_too_long_version_string(_Config) ->
                                                                      {silently_accept_hosts, true}])
     after 5000 ->
             {fail, timeout}
+    end.
+
+check_server_truncates_too_long_version_string(Config) ->
+    PrivDir = proplists:get_value(priv_dir, Config),
+    UserDir = filename:join(PrivDir, nopubkey), % to make sure we don't use public-key-auth
+    file:make_dir(UserDir),
+    SysDir = proplists:get_value(data_dir, Config),
+    Parent = self(),
+
+    Fun = fun(Msg, State) ->
+                  Parent ! Msg,
+                  State
+          end,
+
+    dbg:tracer(process, {Fun, []}),
+    dbg:p(all, c),
+    dbg:tpl(ssh_connection_handler, handle_event, [{[info, '_', {hello, '_'}, '_'], [], []}]),
+    try
+
+        {_Pid, Host, Port} = ssh_test_lib:daemon([{system_dir, SysDir},
+                                                  {user_dir, UserDir},
+                                                  {password, "morot"}]),
+
+        {ok, S} = ssh_test_lib:gen_tcp_connect(Host, Port, []),
+        ok = gen_tcp:send(S,  ["SSH-2.0-", lists:duplicate(300, $a), "\r\n"]),
+        receive
+            Verstring ->
+                ct:log("Server version: ~p~n", [Verstring]),
+                receive
+                    {trace, _, call, {ssh_connection_handler, handle_event, [info, {_, _, Info}, {hello, server}, _]}}
+                      when length(Info) =< 255 ->
+                        receive
+                            {tcp_closed, S} ->
+                                ok
+                        after 100 -> ct:fail("timeout ~p:~p",[?MODULE, ?LINE])
+                        end
+                after 1000 -> ct:fail("timeout ~p:~p", [?MODULE, ?LINE])
+                end
+        after 10000 -> ct:fail("timeout ~p:~p",[?MODULE, ?LINE])
+        end
+    after
+        dbg:stop()
     end.
 
 %%--------------------------------------------------------------------
