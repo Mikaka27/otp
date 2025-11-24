@@ -35,28 +35,9 @@
 -include("ssh.hrl").		% ?UINT32, ?BYTE, #ssh{} ...
 -include("ssh_transport.hrl").
 -include("ssh_auth.hrl").
+-include("ssh_trpt_test_lib.hrl").
 
 %%%----------------------------------------------------------------
--record(s, {
-	  socket,
-	  listen_socket,
-	  opts = [],
-	  timeout = 5000,			% ms
-	  seen_hello = false,
-	  ssh = #ssh{},				% #ssh{}
-	  alg_neg = {undefined,undefined},      % {own_kexinit, peer_kexinit}
-	  alg,                                  % #alg{}
-	  vars = dict:new(),
-	  reply = [],				% Some repy msgs are generated hidden in ssh_transport :[
-	  prints = [],
-	  return_value,
-
-          %% Packet retrieval and decryption
-          decrypted_data_buffer     = <<>>,
-          encrypted_data_buffer     = <<>>,
-          aead_data                 = <<>>,
-          undecrypted_packet_length
-         }).
 
 -define(role(S), ((S#s.ssh)#ssh.role) ).
 
@@ -335,6 +316,10 @@ send(S=#s{ssh=C}, hello) ->
 send(S0, ssh_msg_kexinit) ->
     {Msg, _Bytes, _C0} = ssh_transport:key_exchange_init_msg(S0#s.ssh),
     send(S0, Msg);
+
+% send(S0, ssh_msg_kexinit_guess) ->
+%     {Msg, _Bytes, _C0} = ssh_transport:key_exchange_init_msg(S0#s.ssh),
+%     send(S0, Msg#ssh_msg_kexinit{first_kex_packet_follows = true});
 
 send(S0, ssh_msg_ignore) ->
     Msg = #ssh_msg_ignore{data = "unexpected_ignore_message"},

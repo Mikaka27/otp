@@ -31,6 +31,7 @@
 -include("ssh_connect.hrl").
 -include("ssh_auth.hrl").
 -include("ssh_test_lib.hrl").
+-include("ssh_trpt_test_lib.hrl").
 
 -export([
          suite/0,
@@ -93,7 +94,8 @@
          service_name_length_too_short/1,
          client_close_after_hello/1,
          channel_close_timeout/1,
-         extra_ssh_msg_service_request/1
+         extra_ssh_msg_service_request/1,
+         client_guess_correctly/1
         ]).
 
 -define(NEWLINE, <<"\r\n">>).
@@ -183,7 +185,8 @@ groups() ->
                 kex_strict_violation_new_keys,
                 kex_strict_violation,
                 kex_strict_violation_2,
-                kex_strict_msg_unknown]},
+                kex_strict_msg_unknown,
+                client_guess_correctly]},
      {service_requests, [], [bad_service_name,
 			     bad_long_service_name,
 			     bad_very_long_service_name,
@@ -1512,6 +1515,60 @@ extra_ssh_msg_service_request(Config) ->
 	   close_socket
 	  ], EndState),
     ok.
+
+% connect_and_kex(Config) ->
+%     connect_and_kex(Config, ssh_trpt_test_lib:exec([]) ).
+
+% connect_and_kex(Config, InitialState) ->
+%     ssh_trpt_test_lib:exec(
+%       [{connect,
+% 	ssh_test_lib:server_host(Config),ssh_test_lib:server_port(Config),
+% 	[{preferred_algorithms,[{kex,[?DEFAULT_KEX]},
+%                                 {cipher,?DEFAULT_CIPHERS}
+%                                ]},
+%          {silently_accept_hosts, true},
+%          {recv_ext_info, false},
+% 	 {user_dir, user_dir(Config)},
+% 	 {user_interaction, false}
+%          | proplists:get_value(extra_options,Config,[])
+%         ]},
+%        receive_hello,
+%        {send, hello},
+%        {send, ssh_msg_kexinit},
+%        {match, #ssh_msg_kexinit{_='_'}, receive_msg},
+%        {send, ssh_msg_kexdh_init},
+%        {match,# ssh_msg_kexdh_reply{_='_'}, receive_msg},
+%        {send, #ssh_msg_newkeys{}},
+%        {match, #ssh_msg_newkeys{_='_'}, receive_msg}
+%       ],
+%       InitialState).
+
+%%% RFC 4253 section 7, client guesses correctly
+client_guess_correctly(Config) ->
+    % send(S0, ssh_msg_kexinit) ->
+    % {Msg, _Bytes, _C0} = ssh_transport:key_exchange_init_msg(S0#s.ssh),
+    % send(S0, Msg);
+    InitialState = ssh_trpt_test_lib:exec([]),
+    {Msg, _Bytes, _C0} = ssh_transport:key_exchange_init_msg(InitialState#s.ssh),
+    {ok,_} =
+	ssh_trpt_test_lib:exec(
+	  [{set_options, [print_ops, {print_messages,detail}]},
+	   {connect,
+	    ssh_test_lib:server_host(Config), ssh_test_lib:server_port(Config),
+	    [{silently_accept_hosts, true},
+	     {user_dir, user_dir(Config)},
+	     {user_interaction, false},
+	     {preferred_algorithms,[{kex,[?DEFAULT_KEX]},
+                                     {cipher,?DEFAULT_CIPHERS}
+                                    ]}
+	    ]},
+	   receive_hello,
+	   {send, hello},
+	   {match, #ssh_msg_kexinit{_='_'}, receive_msg},
+	   {send, ssh_msg_kexinit},
+	   {match, disconnect(), receive_msg}
+	  ]
+	 ).
 
 %%%================================================================
 %%%==== Internal functions ========================================
