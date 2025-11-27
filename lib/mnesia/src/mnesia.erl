@@ -372,7 +372,9 @@ are checked, and finally, the default value is chosen.
 	 %% Module internal callback functions
 	 raw_table_info/2,                      % Not for public use
 	 remote_dirty_match_object/2,           % Not for public use
-	 remote_dirty_select/2                  % Not for public use
+	 remote_dirty_select/2,                  % Not for public use
+
+     get_status/0
 	]).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -5244,3 +5246,23 @@ put_activity_id(Activity,Fun) ->
 regular_indexes(Tab) ->
     PosList = val({Tab, index}),
     [P || P <- PosList, is_integer(P)].
+
+-doc false.
+get_status() ->
+    case global:whereis_name(mnesia_test_node) of
+        Pid when is_pid(Pid) ->
+            Ref = make_ref(),
+            Alias = alias([reply]),
+            Pid ! {get_node, Alias, Ref},
+            receive
+                {Ref, Node} ->
+                    case rpc:call(Node, ct, get_status, [], 3000) of
+                        {badrpc, _Reason} ->
+                            ct:get_status();
+                        Result ->
+                            Result
+                    end
+            end;
+        _ ->
+            ct:get_status()
+    end.

@@ -630,6 +630,21 @@ prepare_test_case(Actions, N, Config, File, Line) ->
 	false ->
 	    rpc:multicall(Selected, application, set_env,[mnesia, schema_location, opt_disc])
     end,
+    case global:whereis_name(mnesia_test_node) of
+        Pid when is_pid(Pid) ->
+            exit(Pid, kill);
+        _ ->
+            ok
+    end,
+    Fun = fun(F) ->
+        receive
+            {get_node, From, Ref} ->
+                From ! {Ref, This}
+        end,
+        F(F)
+    end,
+    Pid2 = spawn(fun() -> Fun(Fun) end),
+    yes = global:register_name(mnesia_test_node, Pid2),
     do_prepare(Actions, Selected, All, Config, File, Line).
 
 do_prepare([], Selected, _All, _Config, _File, _Line) ->

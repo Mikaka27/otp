@@ -111,7 +111,7 @@ init_per_group(_GroupName, Config) ->
 end_per_group(_GroupName, Config) ->
     Config.
 
-
+% suite() -> [{ct_hooks,[{ts_install_cth,[{nodenames,3}]}]}].
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Get meta info about Mnesia

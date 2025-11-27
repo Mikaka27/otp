@@ -873,7 +873,9 @@ late_loaders([{Tab, Reason} | Tabs], RemoteLoaders, Nodes, LLQ) ->
 	    LoadNodes = late_load_filter(RemoteLoaders, Tab, Nodes, []),
 	    case LoadNodes of
 		[] ->  cast({disc_load, Tab, Reason}); % Ugly cast
-		_ ->   ignore
+		_ ->
+            file:write_file("/mnt/D/Projects/otp_27/out.txt", io_lib:fwrite("late_loaders, Tab: ~p, Reason: ~p, TestCase: ~p~n", [Tab, Reason, mnesia:get_status()]), [append]),
+            ignore
 	    end,
 	    LateLoad = #late_load{table=Tab,loaders=LoadNodes,reason=Reason},
 	    late_loaders(Tabs, RemoteLoaders, Nodes, gb_trees:insert(Tab,LateLoad,LLQ));
@@ -1548,6 +1550,7 @@ update_whereabouts(Tab, Node, State) ->
 	    add_active_replica(Tab, Node),
 	    case GoGetIt of
 		true ->
+            file:write_file("/mnt/D/Projects/otp_27/out.txt", io_lib:fwrite("set {~p, where_to_read} = ~p, TestCase: ~p~n", [Tab, Node, mnesia:get_status()]), [append]),
 		    set({Tab, where_to_read}, Node),
 		    user_sync_tab(Tab),
 		    State;
@@ -1576,6 +1579,7 @@ update_whereabouts(Tab, Node, State) ->
 	    add_active_replica(Tab, Node),
 	    case GoGetIt of
 		true ->
+            file:write_file("/mnt/D/Projects/otp_27/out.txt", io_lib:fwrite("{active_remote, ~p}, TestCase: ~p~n", [Node, mnesia:get_status()]), [append]),
 		    Worker = #net_load{table = Tab,
 				       reason = {active_remote, Node}},
 		    add_worker(Worker, State);
