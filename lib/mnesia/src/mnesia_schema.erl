@@ -2902,6 +2902,7 @@ undo_prepare_op(Tid, {op, add_table_copy, Storage, Node, TabDef}) ->
 	Tab == schema ->
 	    true; % Nothing to prepare
 	Node == node() ->
+        file:write_file("/mnt/D/Projects/otp_27/out.txt", io_lib:fwrite("undoing add_table_copy, Storage: ~p, Node: ~p, TabDef: ~p, Status: ~p~n", [Storage, Node, TabDef, mnesia:get_status()]), [append]),
 	    mnesia_checkpoint:tm_del_copy(Tab, Node),
 	    mnesia_controller:unannounce_add_table_copy(Tab, Node),
 	    if

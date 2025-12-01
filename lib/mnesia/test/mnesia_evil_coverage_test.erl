@@ -25,7 +25,7 @@
 
 -export([init_per_testcase/2, end_per_testcase/2,
          init_per_group/2, end_per_group/2,
-         all/0, groups/0]).
+         all/0, groups/0, suite/0]).
 
 -export([system_info/1, table_info/1, error_description/1,
          db_node_lifecycle/1, evil_delete_db_node/1, start_and_stop/1,
@@ -47,9 +47,22 @@
          record_name_dirty_access_ram/1,
          record_name_dirty_access_disc/1,
          record_name_dirty_access_disc_only/1,
-         record_name_dirty_access_xets/1]).
+         record_name_dirty_access_xets/1,
+         add_table_copy_during_startup/1]).
 
 -export([info_check/8, index_size/1]).
+
+% -define(init(N, Config),
+% 	mnesia_test_lib:prepare_test_case([{init_test_case, [mnesia]},
+% 					   delete_schema,
+% 					   {reload_appls, [mnesia]}],
+% 					  N, Config, ?FILE, ?LINE)).
+
+-define(acquire(N, Config),
+	mnesia_test_lib:prepare_test_case([{init_test_case, [mnesia]},
+					   delete_schema,
+					   start_ext_test_server],
+					  N, Config, ?FILE, ?LINE)).
 
 -define(cleanup(N, Config),
 	mnesia_test_lib:prepare_test_case([{reload_appls, [mnesia]}],
@@ -61,6 +74,8 @@ end_per_testcase(Func, Conf) ->
     mnesia_test_lib:end_per_testcase(Func, Conf).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+suite() -> [{ct_hooks,[{ts_install_cth,[{nodenames,6}]}]}].
+
 all() -> 
     [system_info, table_info, error_description,
      db_node_lifecycle, evil_delete_db_node, start_and_stop,
@@ -809,6 +824,7 @@ add_copy_with_down(Config) ->
     stopped = rpc:call(Node2, mnesia, stop, []),
     stopped = rpc:call(Node3, mnesia, stop, []),
     ?match({aborted, _}, mnesia:add_table_copy(a, Node1, ram_copies)),
+    % file:write_file("/mnt/D/Projects/otp_27/out.txt", io_lib:fwrite("Info: ~p~n", [mnesia:table_info(a, all)]), [append]),
     ?match({aborted, _}, mnesia:del_table_copy(a, Node2)),
     ok = rpc:call(Node3, mnesia, start, []),
     ?match({aborted, _}, mnesia:add_table_copy(a, Node1, ram_copies)),
@@ -2678,3 +2694,116 @@ index_size(Tab) ->
         {index, _, [{_, {ram, Ref}}=Dbg]} -> {Tab, node(), ets:info(Ref, size), Dbg};
         {index, _, [{_, {dets, Ref}}=Dbg]} -> {Tab, node(), dets:info(Ref, size), Dbg}
     end.
+
+add_table_copy_during_startup(Config) when is_list(Config) ->
+    [N1, N2] = All = ?acquire(2, Config),
+    Tab = tab,
+
+    ?match({[ok, ok], []}, rpc:multicall(All, mnesia, set_debug_level, [debug])),
+
+    % ?match(ok, mnesia:create_schema(N1)),
+    ?match(ok, rpc:call(N1, mnesia, start, [])),
+    ?match(ok, rpc:call(N2, mnesia, start, [[{extra_db_nodes, [N1]}]])),
+
+    ?match({atomic, ok}, mnesia:create_table(Tab, [{ram_copies, All}])),
+    Fun = fun() ->
+        lists:foreach(fun(Num) -> mnesia:write({Tab, Num, val}) end, lists:seq(1, 1000))
+    end,
+    ?match({atomic, ok}, mnesia:transaction(Fun)),
+
+    ?match([], mnesia_test_lib:kill_mnesia([N2])),
+    % ?match({atomic, ok}, mnesia:del_table_copy(schema, N2)),
+    ?match({atomic, ok}, mnesia:transaction(Fun)),
+
+    spawn_link(fun() -> timer:sleep(100), rpc:call(N2, mnesia, start, [[{extra_db_nodes, [N1]}]]) end),
+    ?match(ok, add_table_copy(Tab, N2)),
+
+    % timer:sleep(5000),
+    ?match(ok, rpc:call(N2, mnesia, wait_for_tables, [[Tab], 10000])),
+
+    ct:pal("Info: ~p~n", [rpc:call(N2, mnesia, table_info, [Tab, all])]).
+
+add_table_copy(Tab, Node) ->
+    case rpc:call(Node, mnesia, add_table_copy, [Tab, Node, ram_copies]) of
+        {atomic, ok} ->
+            ok;
+        {aborted, {node_not_running, Node}} ->
+            % timer:sleep(10),
+            add_table_copy(Tab, Node);
+        {aborted, Reason} ->
+            Reason
+    end.
+
+% add_table_copy_during_startup(Config) when is_list(Config) ->
+%     [Esc1, Esc2, Ppb1, Ppb2, Ppb3, Ppb4] = All = ?acquire(6, Config),
+%     Esc = [Esc1, Esc2],
+%     Bp1 = [Ppb1, Ppb2],
+%     Bp2 = [Ppb3, Ppb4],
+
+%     Set1 = lists:map(fun(Num) -> list_to_atom("tab" ++ integer_to_list(Num)) end, lists:seq(1, 50)),
+%     Set2 = lists:map(fun(Num) -> list_to_atom("tab" ++ integer_to_list(Num)) end, lists:seq(51, 100)),
+
+%     ?match(ok, mnesia:create_schema(Esc)),
+%     ?match({[ok, ok], []}, rpc:multicall(Esc, mnesia, start, [])),
+%     ?match({[ok, ok, ok, ok], []}, rpc:multicall(Bp1 ++ Bp2, mnesia, start, [[{extra_db_nodes, Esc}]])),
+
+%     lists:foreach(fun(Tab) ->
+%         ?match(ok, mnesia:create_table(Tab, [{ram_copies, Bp1}]))
+%     end, Set1),
+%     lists:foreach(fun(Tab) ->
+%         ?match(ok, mnesia:create_table(Tab, [{ram_copies, Bp2}]))
+%     end, Set2),
+
+%     lists:foreach(fun(Tab) ->
+%         Fun = fun() ->
+%             lists:foreach(fun(Num) -> mnesia:write({Tab, Num, val}) end, lists:seq(1, 1000))
+%         end,
+%         ?match({atomic, ok}, mnesia:transaction(Fun))
+%     end, Set1 ++ Set2),
+
+%     Pid1 = spawn(Esc1, fun() ->
+%         lists:foreach(fun(Tab) ->
+%             mnesia:del_table_copy(Tab, Ppb1),
+%             mnesia:del_table_copy(Tab, Ppb3)
+%         end, Set1 ++ Set2)
+%     end),
+%     Pid2 = spawn(Esc2, fun() ->
+%         lists:foreach(fun(Tab) ->
+%             mnesia:del_table_copy(Tab, Ppb2),
+%             mnesia:del_table_copy(Tab, Ppb4)
+%         end, Set1 ++ Set2)
+%     end),
+
+%     Rand = rand:uniform(10),
+%     ct:pal("Sleeping for ~p~n", [Rand * 100]),
+%     timer:sleep(Rand * 100),
+%     mnesia_test_lib:kill_mnesia([Esc2, Ppb2] ++ Bp2),
+
+%     timer:sleep(20000),
+%     exit(Pid1, kill),
+%     exit(Pid2, kill),
+
+%     ?match(ok, rpc:call(Ppb4, mnesia, start, [[{extra_db_nodes, Esc}]])),
+%     lists:foreach(fun(Tab) ->
+%         mnesia:del_table_copy(Tab, Ppb4),
+%         mnesia:add_table_copy(Tab, Ppb4, ram_copies)
+%     end, Set1),
+%     timer:sleep(10000),
+%     ?match(ok, rpc:call(Ppb3, mnesia, start, [[{extra_db_nodes, Esc}]])),
+%     ?match(ok, rpc:call(Esc2, mnesia, start, [])),
+%     lists:foreach(fun(Tab) ->
+%         mnesia:del_table_copy(Tab, Ppb3),
+%         mnesia:add_table_copy(Tab, Ppb3, ram_copies)
+%     end, Set1),
+
+%     try
+%         ok = mnesia:wait_for_tables(Set1, 25000)
+%     catch
+%         C : R : ST ->
+%             Dir = "/mnt/D/Projects/my_tools/3",
+%             {ok, Files} = file:list_dir(Dir),
+%             [file:delete(filename:join(Dir, File)) || File <- Files],
+%             rpc:multicall(All, mnesia_lib, set, [core_dir, Dir]),
+%             mnesia_lib:dist_coredump(),
+%             erlang:raise(C, R, ST)
+%     end.

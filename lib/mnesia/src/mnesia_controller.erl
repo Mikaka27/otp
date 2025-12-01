@@ -874,7 +874,7 @@ late_loaders([{Tab, Reason} | Tabs], RemoteLoaders, Nodes, LLQ) ->
 	    case LoadNodes of
 		[] ->  cast({disc_load, Tab, Reason}); % Ugly cast
 		_ ->
-            file:write_file("/mnt/D/Projects/otp_27/out.txt", io_lib:fwrite("late_loaders, Tab: ~p, Reason: ~p, TestCase: ~p~n", [Tab, Reason, mnesia:get_status()]), [append]),
+            % file:write_file("/mnt/D/Projects/otp_27/out.txt", io_lib:fwrite("late_loaders, Tab: ~p, Reason: ~p, TestCase: ~p~n", [Tab, Reason, mnesia:get_status()]), [append]),
             ignore
 	    end,
 	    LateLoad = #late_load{table=Tab,loaders=LoadNodes,reason=Reason},
@@ -1550,7 +1550,7 @@ update_whereabouts(Tab, Node, State) ->
 	    add_active_replica(Tab, Node),
 	    case GoGetIt of
 		true ->
-            file:write_file("/mnt/D/Projects/otp_27/out.txt", io_lib:fwrite("set {~p, where_to_read} = ~p, TestCase: ~p~n", [Tab, Node, mnesia:get_status()]), [append]),
+            % file:write_file("/mnt/D/Projects/otp_27/out.txt", io_lib:fwrite("set {~p, where_to_read} = ~p, TestCase: ~p~n", [Tab, Node, mnesia:get_status()]), [append]),
 		    set({Tab, where_to_read}, Node),
 		    user_sync_tab(Tab),
 		    State;
