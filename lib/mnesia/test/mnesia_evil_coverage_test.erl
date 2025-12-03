@@ -2696,43 +2696,107 @@ index_size(Tab) ->
     end.
 
 add_table_copy_during_startup(Config) when is_list(Config) ->
-    [N1, N2] = All = ?acquire(2, Config),
-    Tab = tab,
+    [N1, N2, N3] = All = ?acquire(3, Config),
 
-    ?match({[ok, ok], []}, rpc:multicall(All, mnesia, set_debug_level, [debug])),
+    ?match(ok, mnesia:create_schema([N1])),
+    ?match(ok, erpc:call(N1, mnesia, start, [])),
+    ?match(ok, erpc:call(N2, mnesia, start, [[{extra_db_nodes, [N1]}]])),
+    ?match(ok, erpc:call(N3, mnesia, start, [[{extra_db_nodes, [N1]}]])),
 
-    % ?match(ok, mnesia:create_schema(N1)),
-    ?match(ok, rpc:call(N1, mnesia, start, [])),
-    ?match(ok, rpc:call(N2, mnesia, start, [[{extra_db_nodes, [N1]}]])),
+    Tabs = lists:map(fun(Num) -> list_to_atom("tab" ++ integer_to_list(Num)) end, lists:seq(1, 100)),
+    Opts = [{ram_copies, [N2, N3]}],
+    lists:foreach(fun(Tab) ->
+        ?match({atomic, ok}, mnesia:create_table(Tab, Opts))
+    end, Tabs),
 
-    ?match({atomic, ok}, mnesia:create_table(Tab, [{ram_copies, All}])),
-    Fun = fun() ->
-        lists:foreach(fun(Num) -> mnesia:write({Tab, Num, val}) end, lists:seq(1, 1000))
+    Reconfigure = fun() ->
+        case mnesia:wait_for_tables(Tabs, 20000) of
+            ok ->
+                lists:foreach(fun(Tab) ->
+                    Copies = case catch mnesia:table_info(Tab, ram_copies) of
+                        L when is_list(L) -> L;
+                        _ -> [table_not_exists]
+                    end,
+                    case lists:member(node(), Copies) of
+                        true -> mnesia:del_table_copy(Tab, node());
+                        false -> ok
+                    end
+                end, Tabs),
+                lists:foreach(fun(Tab) ->
+                    case mnesia:add_table_copy(Tab, node(), ram_copies) of
+                        {atomic, ok} ->
+                            ok;
+                        {aborted, _Reason} ->
+                            case mnesia:create_table(Tab, Opts) of
+                                {atomic, ok} ->
+                                    ok;
+                                {aborted, CreateReason} ->
+                                    mnesia_lib:set(core_dir, "/mnt/D/Projects/otp_27"),
+                                    mnesia_lib:dist_coredump(),
+                                    {error, CreateReason}
+                            end
+                    end
+                end, Tabs);
+            Other ->
+                Other
+        end
     end,
-    ?match({atomic, ok}, mnesia:transaction(Fun)),
 
-    ?match([], mnesia_test_lib:kill_mnesia([N2])),
-    % ?match({atomic, ok}, mnesia:del_table_copy(schema, N2)),
-    ?match({atomic, ok}, mnesia:transaction(Fun)),
+    ?match([], mnesia_test_lib:kill_mnesia([N2, N3])),
+    timer:sleep(1000),
 
-    spawn_link(fun() -> timer:sleep(100), rpc:call(N2, mnesia, start, [[{extra_db_nodes, [N1]}]]) end),
-    ?match(ok, add_table_copy(Tab, N2)),
+    ?match(ok, erpc:call(N3, mnesia, start, [[{extra_db_nodes, [N1]}]])),
+    ?match(ok, erpc:call(N3, Reconfigure)),
 
-    % timer:sleep(5000),
-    ?match(ok, rpc:call(N2, mnesia, wait_for_tables, [[Tab], 10000])),
+    timer:sleep(1000),
+    ?match(ok, erpc:call(N2, mnesia, start, [[{extra_db_nodes, [N1]}]])),
+    ?match(ok, erpc:call(N2, Reconfigure)),
 
-    ct:pal("Info: ~p~n", [rpc:call(N2, mnesia, table_info, [Tab, all])]).
+    lists:foreach(fun(Tab) ->
+        ?match(N2, erpc:call(N2, mnesia, table_info, [Tab, where_to_read])),
+        ?match(N3, erpc:call(N3, mnesia, table_info, [Tab, where_to_read]))
+    end, Tabs),
 
-add_table_copy(Tab, Node) ->
-    case rpc:call(Node, mnesia, add_table_copy, [Tab, Node, ram_copies]) of
-        {atomic, ok} ->
-            ok;
-        {aborted, {node_not_running, Node}} ->
-            % timer:sleep(10),
-            add_table_copy(Tab, Node);
-        {aborted, Reason} ->
-            Reason
-    end.
+    ?verify_mnesia(All, []).
+
+
+    % [N1, N2] = All = ?acquire(2, Config),
+    % Tab = tab,
+
+    % ?match({[ok, ok], []}, rpc:multicall(All, mnesia, set_debug_level, [debug])),
+
+    % % ?match(ok, mnesia:create_schema(N1)),
+    % ?match(ok, rpc:call(N1, mnesia, start, [])),
+    % ?match(ok, rpc:call(N2, mnesia, start, [[{extra_db_nodes, [N1]}]])),
+
+    % ?match({atomic, ok}, mnesia:create_table(Tab, [{ram_copies, All}])),
+    % Fun = fun() ->
+    %     lists:foreach(fun(Num) -> mnesia:write({Tab, Num, val}) end, lists:seq(1, 1000))
+    % end,
+    % ?match({atomic, ok}, mnesia:transaction(Fun)),
+
+    % ?match([], mnesia_test_lib:kill_mnesia([N2])),
+    % % ?match({atomic, ok}, mnesia:del_table_copy(schema, N2)),
+    % ?match({atomic, ok}, mnesia:transaction(Fun)),
+
+    % spawn_link(fun() -> timer:sleep(100), rpc:call(N2, mnesia, start, [[{extra_db_nodes, [N1]}]]) end),
+    % ?match(ok, add_table_copy(Tab, N2)),
+
+    % % timer:sleep(5000),
+    % ?match(ok, rpc:call(N2, mnesia, wait_for_tables, [[Tab], 10000])),
+
+    % ct:pal("Info: ~p~n", [rpc:call(N2, mnesia, table_info, [Tab, all])]).
+
+% add_table_copy(Tab, Node) ->
+%     case rpc:call(Node, mnesia, add_table_copy, [Tab, Node, ram_copies]) of
+%         {atomic, ok} ->
+%             ok;
+%         {aborted, {node_not_running, Node}} ->
+%             % timer:sleep(10),
+%             add_table_copy(Tab, Node);
+%         {aborted, Reason} ->
+%             Reason
+%     end.
 
 % add_table_copy_during_startup(Config) when is_list(Config) ->
 %     [Esc1, Esc2, Ppb1, Ppb2, Ppb3, Ppb4] = All = ?acquire(6, Config),
