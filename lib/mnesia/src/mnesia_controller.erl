@@ -1579,7 +1579,7 @@ update_whereabouts(Tab, Node, State) ->
 	    add_active_replica(Tab, Node),
 	    case GoGetIt of
 		true ->
-            file:write_file("/mnt/D/Projects/otp_27/out.txt", io_lib:fwrite("{active_remote, ~p}, TestCase: ~p~n", [Node, mnesia:get_status()]), [append]),
+            % file:write_file("/mnt/D/Projects/otp_27/out.txt", io_lib:fwrite("{active_remote, ~p}, TestCase: ~p~n", [Node, mnesia:get_status()]), [append]),
 		    Worker = #net_load{table = Tab,
 				       reason = {active_remote, Node}},
 		    add_worker(Worker, State);

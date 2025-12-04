@@ -2748,6 +2748,8 @@ add_table_copy_during_startup(Config) when is_list(Config) ->
     ?match(ok, erpc:call(N2, mnesia, start, [[Def, {extra_db_nodes, [N1]}]])),
     ?match(ok, erpc:call(N3, mnesia, start, [[Def, {extra_db_nodes, [N1]}]])),
 
+    erpc:multicall(All, mnesia, set_debug_level, [debug]),
+
     Tabs = lists:map(fun(Num) -> list_to_atom("tab" ++ integer_to_list(Num)) end, lists:seq(1, 100)),
     Opts = [{ram_copies, [N2, N3]}],
     lists:foreach(fun(Tab) ->
