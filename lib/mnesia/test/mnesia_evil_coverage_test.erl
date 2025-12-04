@@ -2695,13 +2695,58 @@ index_size(Tab) ->
         {index, _, [{_, {dets, Ref}}=Dbg]} -> {Tab, node(), dets:info(Ref, size), Dbg}
     end.
 
+% event_module(Config) when is_list(Config) ->
+%     Filter = fun({mnesia_system_event,{mnesia_info, _, _}}) -> false;
+% 		(_) -> true
+% 	     end,
+    
+%     [_N1, N2]=Nodes=?acquire_schema(2, Config),
+
+%     Def = case mnesia_test_lib:diskless(Config) of 
+% 	      true -> [{event_module, mnesia_config_event},
+% 		       {extra_db_nodes, Nodes}];
+% 	      false  ->
+% 		  [{event_module, mnesia_config_event}]
+% 	  end,
+
+%     ?match({[ok, ok], []}, rpc:multicall(Nodes, mnesia, start, [Def])),
+%     receive after 2000 -> ok end,
+%     mnesia_event ! {get_log, self()},
+%     DebugLog1 = receive
+% 		    {log, L1} -> L1
+% 		after 10000 -> [timeout]
+% 		end,
+%     ?match([{mnesia_system_event,{mnesia_up,N2}}],
+% 	   lists:filter(Filter, DebugLog1)),
+%     mnesia_test_lib:kill_mnesia([N2]),
+%     receive after 2000 -> ok end,
+
+%     ?match({[ok], []}, rpc:multicall([N2], mnesia, start, [])),
+
+%     receive after 2000 -> ok end,
+%     mnesia_event ! {get_log, self()},
+%     DebugLog = receive
+% 		   {log, L} -> L
+% 	       after 10000 -> [timeout]
+% 	       end,
+%     ?match([{mnesia_system_event,{mnesia_up,N2}},
+% 	    {mnesia_system_event,{mnesia_down,N2}},
+% 	    {mnesia_system_event,{mnesia_up, N2}}],
+% 	   lists:filter(Filter, DebugLog)),
+%     ?verify_mnesia(Nodes, []),
+%     ?cleanup(1, Config),
+%     ok.
+
 add_table_copy_during_startup(Config) when is_list(Config) ->
+    process_flag(trap_exit, true),
     [N1, N2, N3] = All = ?acquire(3, Config),
 
     ?match(ok, mnesia:create_schema([N1])),
-    ?match(ok, erpc:call(N1, mnesia, start, [])),
-    ?match(ok, erpc:call(N2, mnesia, start, [[{extra_db_nodes, [N1]}]])),
-    ?match(ok, erpc:call(N3, mnesia, start, [[{extra_db_nodes, [N1]}]])),
+
+    Def = {event_module, mnesia_config_event},
+    ?match(ok, erpc:call(N1, mnesia, start, [[Def]])),
+    ?match(ok, erpc:call(N2, mnesia, start, [[Def, {extra_db_nodes, [N1]}]])),
+    ?match(ok, erpc:call(N3, mnesia, start, [[Def, {extra_db_nodes, [N1]}]])),
 
     Tabs = lists:map(fun(Num) -> list_to_atom("tab" ++ integer_to_list(Num)) end, lists:seq(1, 100)),
     Opts = [{ram_copies, [N2, N3]}],
@@ -2709,7 +2754,10 @@ add_table_copy_during_startup(Config) when is_list(Config) ->
         ?match({atomic, ok}, mnesia:create_table(Tab, Opts))
     end, Tabs),
 
+    Dir = os:getenv("ERL_TOP", "/tmp"),
+    Parent = self(),
     Reconfigure = fun() ->
+        Res =
         case mnesia:wait_for_tables(Tabs, 20000) of
             ok ->
                 lists:foreach(fun(Tab) ->
@@ -2731,31 +2779,95 @@ add_table_copy_during_startup(Config) when is_list(Config) ->
                                 {atomic, ok} ->
                                     ok;
                                 {aborted, CreateReason} ->
-                                    mnesia_lib:set(core_dir, "/mnt/D/Projects/otp_27"),
-                                    mnesia_lib:dist_coredump(),
+                                    mnesia_lib:set(core_dir, Dir),
                                     {error, CreateReason}
                             end
                     end
                 end, Tabs);
             Other ->
                 Other
+        end,
+        case Res of
+            ok -> Parent ! {reconfigure_done, node()};
+            {error, _Reason} -> Parent ! {reconfigure_failed, node()}
         end
     end,
 
+    Pid = spawn_link(N2, fun() ->
+        lists:foreach(fun(Tab) ->
+            lists:foreach(fun(Num) ->
+                mnesia:dirty_write({Tab, Num, val})
+            end, lists:seq(1, 10000))
+        end, Tabs)
+    end),
+
+    timer:sleep(1000),
+
     ?match([], mnesia_test_lib:kill_mnesia([N2, N3])),
-    timer:sleep(1000),
+    exit(Pid, stop),
+    receive after 2000 -> ok end,
+    mnesia_event ! {get_log, self()},
+    DebugLog1 =
+        receive {log, L1} -> L1
+        after 10000 -> [timeout]
+        end,
+    
+    ?match(true, lists:member({mnesia_system_event, {mnesia_down, N2}}, DebugLog1)),
+    ?match(true, lists:member({mnesia_system_event, {mnesia_down, N3}}, DebugLog1)),
 
-    ?match(ok, erpc:call(N3, mnesia, start, [[{extra_db_nodes, [N1]}]])),
-    ?match(ok, erpc:call(N3, Reconfigure)),
+    ?match(ok, erpc:call(N3, mnesia, start, [[Def, {extra_db_nodes, [N1]}]])),
+    receive after 2000 -> ok end,
+    mnesia_event ! {get_log, self()},
+    DebugLog2 =
+        receive {log, L2} -> L2
+        after 10000 -> [timeout]
+        end,
+    ?match(true, lists:member({mnesia_system_event, {mnesia_up, N3}}, DebugLog2)),
+    ?match(ok, erpc:cast(N3, Reconfigure)),
 
-    timer:sleep(1000),
-    ?match(ok, erpc:call(N2, mnesia, start, [[{extra_db_nodes, [N1]}]])),
-    ?match(ok, erpc:call(N2, Reconfigure)),
+    ?match(ok, erpc:call(N2, mnesia, start, [[Def, {extra_db_nodes, [N1]}]])),
+    receive after 2000 -> ok end,
+    mnesia_event ! {get_log, self()},
+    DebugLog3 =
+        receive {log, L3} -> L3
+        after 10000 -> [timeout]
+    end,
+    ?match(true, lists:member({mnesia_system_event, {mnesia_up, N2}}, DebugLog3)),
+    ?match(ok, erpc:cast(N2, Reconfigure)),
+
+    N3Failed =
+    receive
+        {reconfigure_done, N3} -> false;
+        {reconfigure_failed, N3} -> true
+    end,
+    N2Failed =
+    receive
+        {reconfigure_done, N2} -> false;
+        {reconfigure_failed, N2} -> true
+    end,
+
+    N3Failed andalso N2Failed andalso mnesia_lib:dist_coredump(),
 
     lists:foreach(fun(Tab) ->
-        ?match(N2, erpc:call(N2, mnesia, table_info, [Tab, where_to_read])),
-        ?match(N3, erpc:call(N3, mnesia, table_info, [Tab, where_to_read]))
+        case erpc:call(N2, mnesia, table_info, [Tab, where_to_read]) of
+            N2 -> ok;
+            _ ->
+                Parent ! {failed, N2, Tab},
+                ?error("where_to_read wrong for Tab: ~p, Node: ~p~n", [Tab, N2])
+        end,
+        case erpc:call(N3, mnesia, table_info, [Tab, where_to_read]) of
+            N3 -> ok;
+            _ ->
+                Parent ! {failed, N3, Tab},
+                ?error("where_to_read wrong for Tab: ~p, Node: ~p~n", [Tab, N3])
+        end
     end, Tabs),
+
+    receive
+        {failed, _, _} ->
+            mnesia_lib:dist_coredump()
+    after 0 -> ok
+    end,
 
     ?verify_mnesia(All, []).
 
