@@ -1,0 +1,125 @@
+#! /bin/sh -f
+# Modified mt script with named pipes for node communication
+
+top="$ERL_TOP/lib/mnesia"
+h=`hostname`
+p="-pa $top/examples -pa $top/ebin -pa $top/test -mnesia_test_verbose true"
+log=test_log$$
+latest=test_log_latest
+args=${1+"$@"}
+
+# Create named pipes for each node
+pipe_dir="/tmp/mnesia_pipes"
+rm -rf "$pipe_dir"
+mkdir -p "$pipe_dir"
+mkfifo "$pipe_dir/a_in" "$pipe_dir/a1_in" "$pipe_dir/a2_in"
+
+# Create simple pipe handler
+cat > "$pipe_dir/pipe_handler.erl" << 'EOF'
+-module(pipe_handler).
+-export([start/1]).
+
+start(PipePath) ->
+    io:format("Starting pipe handler for: ~s~n", [PipePath]),
+    {ok, spawn(fun() -> loop(PipePath) end)}.
+
+loop(PipePath) ->
+    io:format("Trying to open pipe: ~s~n", [PipePath]),
+    case file:open(PipePath, [read]) of
+        {ok, Fd} ->
+            io:format("Pipe opened, reading...~n"),
+            case file:read_line(Fd) of
+                {ok, Line} ->
+                    io:format("Got line: ~s", [Line]),
+                    file:close(Fd),
+                    try
+                        {ok, Tokens, _} = erl_scan:string(Line),
+                        {ok, Parsed} = erl_parse:parse_exprs(Tokens),
+                        {value, Result, _} = erl_eval:exprs(Parsed, []),
+                        io:format("Result: ~p~n", [Result])
+                    catch
+                        _:Error -> io:format("Error: ~p~n", [Error])
+                    end,
+                    loop(PipePath);
+                eof ->
+                    io:format("EOF, retrying...~n"),
+                    file:close(Fd),
+                    timer:sleep(100),
+                    loop(PipePath);
+                {error, Reason} ->
+                    io:format("Read error: ~p~n", [Reason]),
+                    timer:sleep(100),
+                    loop(PipePath)
+            end;
+        {error, Reason} ->
+            io:format("Open error: ~p~n", [Reason]),
+            timer:sleep(100),
+            loop(PipePath)
+    end.
+EOF
+
+erlcmd="erl -sname a $p -pa $pipe_dir $args -mnesia_test_timeout"
+erlcmd1="erl -sname a1 $p -pa $pipe_dir $args"
+erlcmd2="erl -sname a2 $p -pa $pipe_dir $args"
+
+if test z"$MT_TERM" = z ; then
+    MT_TERM=xterm
+fi
+
+case $MT_TERM in
+    xterm)
+	geom0="-geometry 142x40+0+0"
+	geom1="-geometry 70x20+0+550"
+	geom2="-geometry 70x20+480+550"
+	title="-T"
+	exec="-e"
+	;;
+    gnome-terminal)
+	geom0="--geometry 142x40+0+0"
+	geom1="--geometry 70x20+0+740"
+	geom2="--geometry 70x20+700+740"
+	title="--title"
+	exec="--hide-menubar --"
+	;;
+    *rxvt)
+	geom0="-geometry 142x40+0+0"
+	geom1="-geometry 70x20+0+680"
+	geom2="-geometry 70x20+630+680"
+	title="-title"
+	exec="-e"
+esac
+
+rm "$latest" 2>/dev/null
+touch "$log"
+ln -s "$log" "$latest"
+
+# Compile the module
+cd "$pipe_dir" && erlc pipe_handler.erl
+
+echo "Pipes created in: $pipe_dir"
+echo "In each Erlang shell, run:"
+echo "  pipe_handler:start(\"$pipe_dir/a_in\").   % for node a"
+echo "  pipe_handler:start(\"$pipe_dir/a1_in\").  % for node a1"
+echo "  pipe_handler:start(\"$pipe_dir/a2_in\").  % for node a2"
+echo ""
+echo "Then send commands:"
+echo "  echo 'mnesia:info().' > $pipe_dir/a_in"
+echo "  echo 'nodes().' > $pipe_dir/a1_in"
+echo "  echo 'init:halt().' > $pipe_dir/a2_in"
+echo ""
+
+
+
+# Cleanup function
+cleanup() {
+    rm -rf "$pipe_dir"
+    exit 0
+}
+trap cleanup INT TERM
+
+$MT_TERM $geom0 $title a $exec script -c "$erlcmd" -f $log &
+$MT_TERM $geom1 $title a1 $exec script -c "$erlcmd1" -f ${log}_a1 &
+$MT_TERM $geom2 $title a2 $exec script -c "$erlcmd2" -f ${log}_a2 &
+
+echo "Press CTRL+C to stop nodes"
+wait

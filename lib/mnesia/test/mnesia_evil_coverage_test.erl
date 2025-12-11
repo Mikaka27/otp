@@ -2741,6 +2741,20 @@ add_table_copy_during_startup(Config) when is_list(Config) ->
     process_flag(trap_exit, true),
     [N1, N2, N3] = All = ?acquire(3, Config),
 
+    PipeDir = "/tmp/mnesia_pipes",
+    GetPipeName = fun(Node) ->
+        NodeName = atom_to_list(Node),
+        [Name, _] = string:split(NodeName, "@"),
+        Name ++ "_in"
+    end,
+    Pipe1 = filename:join(PipeDir, GetPipeName(N1)),
+    Pipe2 = filename:join(PipeDir, GetPipeName(N2)),
+    Pipe3 = filename:join(PipeDir, GetPipeName(N3)),
+
+    ?match(ok, erpc:cast(N1, pipe_handler, start, [Pipe1])),
+    ?match(ok, erpc:cast(N2, pipe_handler, start, [Pipe2])),
+    ?match(ok, erpc:cast(N3, pipe_handler, start, [Pipe3])),
+
     ?match(ok, mnesia:create_schema([N1])),
 
     Def = {event_module, mnesia_config_event},
@@ -2762,16 +2776,22 @@ add_table_copy_during_startup(Config) when is_list(Config) ->
         Res =
         case mnesia:wait_for_tables(Tabs, 20000) of
             ok ->
+                Res1 =
                 lists:foreach(fun(Tab) ->
                     Copies = case catch mnesia:table_info(Tab, ram_copies) of
                         L when is_list(L) -> L;
                         _ -> [table_not_exists]
                     end,
                     case lists:member(node(), Copies) of
-                        true -> mnesia:del_table_copy(Tab, node());
+                        true ->
+                            case mnesia:del_table_copy(Tab, node()) of
+                                {atomic, ok} -> ok;
+                                {aborted, Reason} -> {error, Reason}
+                            end;
                         false -> ok
                     end
                 end, Tabs),
+                Res2 =
                 lists:foreach(fun(Tab) ->
                     case mnesia:add_table_copy(Tab, node(), ram_copies) of
                         {atomic, ok} ->
@@ -2785,17 +2805,21 @@ add_table_copy_during_startup(Config) when is_list(Config) ->
                                     {error, CreateReason}
                             end
                     end
-                end, Tabs);
+                end, Tabs),
+                {Res1, Res2};
             Other ->
                 Other
         end,
         case Res of
             ok -> Parent ! {reconfigure_done, node()};
-            {error, _Reason} -> Parent ! {reconfigure_failed, node()}
+            {error, _Reason} -> Parent ! {reconfigure_failed, node()};
+            {ok, ok} -> Parent ! {reconfigure_done, node()};
+            {{error, _Reason}, _} -> Parent ! {reconfigure_failed, node()};
+            {_, {error, _Reason}} -> Parent ! {reconfigure_failed, node()}
         end
     end,
 
-    Pid = spawn_link(N2, fun() ->
+    Pid = spawn(N2, fun() ->
         lists:foreach(fun(Tab) ->
             lists:foreach(fun(Num) ->
                 mnesia:dirty_write({Tab, Num, val})
@@ -2805,8 +2829,24 @@ add_table_copy_during_startup(Config) when is_list(Config) ->
 
     timer:sleep(1000),
 
-    ?match([], mnesia_test_lib:kill_mnesia([N2, N3])),
-    exit(Pid, stop),
+    % ?match([], mnesia_test_lib:kill_mnesia([N2, N3])),
+    % exit(Pid, stop),
+    Disconnect = [net_kernel:disconnect(Node) || Node <- [N2, N3]],
+    ?match([true, true], Disconnect),
+
+    timer:sleep(1000),
+    file:write_file(Pipe2, io_lib:fwrite("exit(~p, kill).", [Pid])),
+
+    timer:sleep(1000),
+
+    file:write_file(Pipe2, io_lib:fwrite("mnesia:lkill().", [])),
+    file:write_file(Pipe3, io_lib:fwrite("mnesia:lkill().", [])),
+
+    timer:sleep(1000),
+
+    _DeleteSchema = [mnesia:del_table_copy(schema, Node) || Node <- [N2, N3]],
+    % ?match([{atomic, ok}, {atomic, ok}], DeleteSchema),
+
     receive after 2000 -> ok end,
     mnesia_event ! {get_log, self()},
     DebugLog1 =
