@@ -30,7 +30,7 @@
 -behaviour(supervisor).
 -include("ssh.hrl").
 
--export([start_link/1, start_child/8]).
+-export([start_link/1, start_child/9]).
 
 %% Supervisor callback
 -export([init/1]).
@@ -42,13 +42,13 @@ start_link(Args) ->
     supervisor:start_link(?MODULE, [Args]).
 
 
-start_child(client, ChannelSup, ConnRef, Callback, Id, Args, Exec, _Opts) when is_pid(ConnRef) ->
-    start_the_channel(ssh_client_channel, ChannelSup, ConnRef, Callback, Id, Args, Exec);
+start_child(client, ChannelSup, ConnRef, Callback, Id, Args, Exec, _Opts, AuthContext) when is_pid(ConnRef) ->
+    start_the_channel(ssh_client_channel, ChannelSup, ConnRef, Callback, Id, Args, Exec, AuthContext);
 
-start_child(server, ChannelSup, ConnRef, Callback, Id, Args, Exec, Opts) when is_pid(ConnRef) ->
+start_child(server, ChannelSup, ConnRef, Callback, Id, Args, Exec, Opts, AuthContext) when is_pid(ConnRef) ->
      case max_num_channels_not_exceeded(ChannelSup, Opts) of
          true ->
-             start_the_channel(ssh_server_channel, ChannelSup, ConnRef, Callback, Id, Args, Exec);
+             start_the_channel(ssh_server_channel, ChannelSup, ConnRef, Callback, Id, Args, Exec, AuthContext);
          false ->
              {error, max_num_channels_exceeded}
     end.
@@ -76,10 +76,10 @@ max_num_channels_not_exceeded(ChannelSup, Opts) ->
     NumChannels < MaxNumChannels.
 
 
-start_the_channel(ChanMod, ChannelSup, ConnRef, Callback, Id, Args, Exec) ->
+start_the_channel(ChanMod, ChannelSup, ConnRef, Callback, Id, Args, Exec, AuthContext) ->
     ChildSpec =
         #{id       => make_ref(),
-          start    => {ChanMod, start_link, [ConnRef, Id, Callback, Args, Exec]},
+          start    => {ChanMod, start_link, [ConnRef, Id, Callback, Args, Exec, AuthContext]},
           restart  => temporary,
           type     => worker,
           modules  => [ChanMod]

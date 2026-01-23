@@ -53,8 +53,8 @@
 	  group,
 	  shell,
 	  exec,
-      tty
-
+      tty,
+      auth_context = #{}  % Authentication context from is_auth_key
 	 }).
 
 -define(EXEC_ERROR_STATUS, 255).
@@ -69,11 +69,13 @@
 %% Description: Initiates the CLI
 %%--------------------------------------------------------------------
 init([Shell, Exec]) ->
-    TTY = prim_tty:init_ssh(#{input => false}, {80, 24}, utf8),
-    {ok, #state{shell = Shell, exec = Exec, tty = TTY}};
+    init([Shell, Exec], #{});
 init([Shell]) ->
+    init([Shell, undefined], #{}).
+
+init([Shell, Exec], AuthContext) ->
     TTY = prim_tty:init_ssh(#{input => false}, {80, 24}, utf8),
-    {ok, #state{shell = Shell, tty = TTY}}.
+    {ok, #state{shell = Shell, exec = Exec, tty = TTY, auth_context = AuthContext}}.
 
 %%--------------------------------------------------------------------
 %% Function: handle_ssh_msg(Args) -> {ok, State} | {stop, ChannelId, State}
@@ -597,6 +599,13 @@ exec_direct(ConnectionHandler, ChannelId, Cmd, ExecSpec, WantReply, State) ->
                         User = proplists:get_value(user, ConnectionInfo),
                         {_, PeerAddr} = proplists:get_value(peer, ConnectionInfo),
                         ExecSpec(Cmd, User, PeerAddr);
+
+                    is_function(ExecSpec, 4) ->
+                        ConnectionInfo =
+                            ssh_connection_handler:connection_info(ConnectionHandler, [peer, user]),
+                        User = proplists:get_value(user, ConnectionInfo),
+                        {_, PeerAddr} = proplists:get_value(peer, ConnectionInfo),
+                        ExecSpec(Cmd, User, PeerAddr, State#state.auth_context);
 
                     true ->
                         {error, "Bad exec fun in server"}

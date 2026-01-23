@@ -63,11 +63,26 @@ initializations succeed.
 The time-out values that can be returned have the same semantics as in a
 `m:gen_server`. If the time-out occurs, `c:handle_msg/2` is called as
 [`handle_msg(timeout, State)`](`c:handle_msg/2`).
+
+The optional init/2 callback receives authentication context as the second parameter,
+which contains custom data returned by the is_auth_key callback. If init/2 is not
+exported, init/1 is called for backward compatibility.
 """.
 -doc(#{since => <<"OTP 21.0">>}).
 -callback init(Args :: term()) ->
     {ok, State :: term()} | {ok, State :: term(), timeout() | hibernate} |
     {stop, Reason :: term()} | ignore.
+
+-doc """
+Optional callback that receives authentication context from is_auth_key.
+If not implemented, init/1 is called instead.
+""".
+-doc(#{since => <<"OTP 28.0">>}).
+-callback init(Args :: term(), AuthContext :: map()) ->
+    {ok, State :: term()} | {ok, State :: term(), timeout() | hibernate} |
+    {stop, Reason :: term()} | ignore.
+
+-optional_callbacks([init/2]).
 
 -doc """
 This function is called by a channel process when it is about to terminate.

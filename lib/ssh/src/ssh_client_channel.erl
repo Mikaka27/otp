@@ -314,15 +314,20 @@ sets the `trap_exit` flag to `true`.
       CbInitArgs :: [term()],
       ChannelRef :: pid().
 start_link(ConnectionManager, ChannelId, CallBack, CbInitArgs) ->
-    start_link(ConnectionManager, ChannelId, CallBack, CbInitArgs, undefined).
+    start_link(ConnectionManager, ChannelId, CallBack, CbInitArgs, undefined, #{}).
 
 -doc false.
 start_link(ConnectionManager, ChannelId, CallBack, CbInitArgs, Exec) ->
+    start_link(ConnectionManager, ChannelId, CallBack, CbInitArgs, Exec, #{}).
+
+-doc false.
+start_link(ConnectionManager, ChannelId, CallBack, CbInitArgs, Exec, AuthContext) ->
     Options = [{channel_cb, CallBack},
 	       {channel_id, ChannelId},
 	       {init_args, CbInitArgs},
 	       {cm, ConnectionManager},
-	       {exec, Exec}],
+	       {exec, Exec},
+	       {auth_context, AuthContext}],
     gen_server:start_link(?MODULE, [Options], []).
 
 -doc """
@@ -387,8 +392,9 @@ init([Options]) ->
     Cb = proplists:get_value(channel_cb, Options),
     ConnectionManager =  proplists:get_value(cm, Options),
     ChannelId = proplists:get_value(channel_id, Options),
+    AuthContext = proplists:get_value(auth_context, Options, #{}),
     process_flag(trap_exit, true),
-    try Cb:init(channel_cb_init_args(Options)) of
+    try Cb:init(channel_cb_init_args(Options), AuthContext) of
 	{ok, ChannelState} ->
 	    State = #state{cm = ConnectionManager, 
 			   channel_cb = Cb,
@@ -406,8 +412,35 @@ init([Options]) ->
 	{stop, Why} ->
 	    {stop, Why}
     catch 
-        _:undef ->
-            {stop, {bad_channel_callback_module,Cb}};
+        error:undef:ST ->
+            %% Check if it's because init/2 doesn't exist, try init/1 for backward compat
+            case lists:any(fun({M,F,A,_}) -> M =:= Cb andalso F =:= init andalso A =:= 2 end, ST) of
+                true ->
+                    %% init/2 doesn't exist, try init/1
+                    try Cb:init(channel_cb_init_args(Options)) of
+                        {ok, ChannelState} ->
+                            State = #state{cm = ConnectionManager, 
+                                          channel_cb = Cb,
+                                          channel_id = ChannelId,
+                                          channel_state = ChannelState},
+                            self() ! {ssh_channel_up, ChannelId, ConnectionManager}, 
+                            {ok, State};
+                        {ok, ChannelState, Timeout} ->
+                            State = #state{cm = ConnectionManager, 
+                                          channel_cb = Cb,
+                                          channel_id = ChannelId,
+                                          channel_state = ChannelState},
+                            self() ! {ssh_channel_up, ChannelId, ConnectionManager}, 
+                            {ok, State, Timeout};
+                        {stop, Why} ->
+                            {stop, Why}
+                    catch
+                        _:_ ->
+                            {stop, {bad_channel_callback_module,Cb}}
+                    end;
+                false ->
+                    {stop, {bad_channel_callback_module,Cb}}
+            end;
 	_:Reason ->
 	    {stop, Reason}
     end.

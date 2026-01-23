@@ -311,15 +311,15 @@ handle_userauth_request(#ssh_msg_userauth_request{user = User,
     case
         pre_verify_sig(User, KeyBlob, Ssh)
     of
-	true ->
+	{true, Ssh1} ->
 	    {not_authorized, {User, undefined},
              {#ssh_msg_userauth_pk_ok{algorithm_name = binary_to_list(BAlg),
-                                     key_blob = KeyBlob}, Ssh}
+                                     key_blob = KeyBlob}, Ssh1}
             };
-	false ->
+	{false, Ssh1} ->
 	    {not_authorized, {User, undefined}, 
 	     {#ssh_msg_userauth_failure{authentications = Methods,
-                                        partial_success = false}, Ssh}
+                                        partial_success = false}, Ssh1}
             }
     end;
 
@@ -341,14 +341,14 @@ handle_userauth_request(#ssh_msg_userauth_request{user = User,
         UserOk andalso
         verify_sig(SessionId, User, "ssh-connection", BAlg, KeyBlob, SigWLen, Ssh)
     of
-	true ->
+	{true, Ssh1} ->
 	    {authorized, User, 
-             {#ssh_msg_userauth_success{}, Ssh}
+             {#ssh_msg_userauth_success{}, Ssh1}
             };
-	false ->
+	{false, Ssh1} ->
 	    {not_authorized, {User, undefined}, 
 	     {#ssh_msg_userauth_failure{authentications = Methods,
-                                        partial_success = false}, Ssh}
+                                        partial_success = false}, Ssh1}
             }
     end;
 
@@ -548,13 +548,18 @@ get_password_option(Opts, User) ->
 	false -> ?GET_OPT(password, Opts)
     end.
 	    
-pre_verify_sig(User, KeyBlob,  #ssh{opts=Opts}) ->
+pre_verify_sig(User, KeyBlob,  #ssh{opts=Opts} = Ssh) ->
     try
 	Key = ssh_message:ssh2_pubkey_decode(KeyBlob), % or exception
-        ssh_transport:call_KeyCb(is_auth_key, [Key, User], Opts)
+        case ssh_transport:call_KeyCb(is_auth_key, [Key, User], Opts) of
+            true -> {true, Ssh};
+            {true, AuthContext} when is_map(AuthContext) -> 
+                {true, Ssh#ssh{auth_context = AuthContext}};
+            false -> {false, Ssh}
+        end
     catch
 	_:_ ->
-	    false
+	    {false, Ssh}
     end.
 
 verify_sig(SessionId, User, Service, AlgBin, KeyBlob, SigWLen, #ssh{opts=Opts} = Ssh) ->
@@ -564,15 +569,31 @@ verify_sig(SessionId, User, Service, AlgBin, KeyBlob, SigWLen, #ssh{opts=Opts} =
                             proplists:get_value(public_key,
                                                 ?GET_OPT(preferred_algorithms,Opts))),
         Key = ssh_message:ssh2_pubkey_decode(KeyBlob), % or exception
-        true = ssh_transport:call_KeyCb(is_auth_key, [Key, User], Opts),
+        case ssh_transport:call_KeyCb(is_auth_key, [Key, User], Opts) of
+            true -> ok;
+            {true, AuthContext} when is_map(AuthContext) -> 
+                %% Store auth context for later use
+                put(ssh_auth_context, AuthContext),
+                ok;
+            false -> throw(auth_failed)
+        end,
         PlainText = build_sig_data(SessionId, User, Service, KeyBlob, Alg),
         <<?UINT32(AlgSigLen), AlgSig:AlgSigLen/binary>> = SigWLen,
         <<?UINT32(AlgLen), _Alg:AlgLen/binary,
           ?UINT32(SigLen), Sig:SigLen/binary>> = AlgSig,
-        ssh_transport:verify(PlainText, list_to_existing_atom(Alg), Sig, Key, Ssh)
+        case ssh_transport:verify(PlainText, list_to_existing_atom(Alg), Sig, Key, Ssh) of
+            true -> 
+                %% Retrieve and apply auth context
+                case erase(ssh_auth_context) of
+                    undefined -> {true, Ssh};
+                    AuthCtx -> {true, Ssh#ssh{auth_context = AuthCtx}}
+                end;
+            false -> {false, Ssh}
+        end
     catch
 	_:_ ->
-	    false
+	    erase(ssh_auth_context),
+	    {false, Ssh}
     end.
 
 build_sig_data(SessionId, User, Service, KeyBlob, Alg) ->

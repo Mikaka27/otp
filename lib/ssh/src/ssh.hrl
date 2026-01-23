@@ -1306,6 +1306,7 @@ Experimental options that should not to be used in products.
 	  pwdfun_user_state,
 	  authenticated = false,
 	  userauth_banner_sent = false,
+	  auth_context = #{},               %  map() - custom authentication context from is_auth_key
           %% Keep-alive
           alive_last_sent_at = 0              :: non_neg_integer(),
           alive_probes_sent = 0               :: non_neg_integer()

@@ -72,4 +72,4 @@ is available with the key `key_cb_private`.
 		      User :: string(),
 		      DaemonOptions :: daemon_key_cb_options(any())
                      ) ->
-    boolean().
+    boolean() | {true, AuthContext :: map()}.
