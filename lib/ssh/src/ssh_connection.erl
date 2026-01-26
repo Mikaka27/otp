@@ -821,12 +821,13 @@ handle_msg(#ssh_msg_channel_eof{recipient_channel = ChannelId}, Connection, _, _
     reply_msg(ChannelId, Connection, {eof, ChannelId});
    
 handle_msg(#ssh_msg_channel_close{recipient_channel = ChannelId},   
-	   #connection{channel_cache = Cache} = Connection0, _, _SSH) ->
+	   #connection{channel_cache = Cache} = Connection0, _, SSH) ->
 
 	case ssh_client_channel:cache_lookup(Cache, ChannelId) of
 		#channel{sent_close = Closed, remote_id = RemoteId,
 			 flow_control = FlowControl} = Channel ->
 		ssh_client_channel:cache_delete(Cache, ChannelId),
+		{ok, NewHooks} = ssh_connection_hooks:call_channel_close(ChannelId, SSH, SSH#ssh.connection_hooks),
 		{CloseMsg, Connection} = 
 		    reply_msg(Channel, Connection0, {closed, ChannelId}),
 		ConnReplyMsgs =
@@ -858,13 +859,15 @@ handle_msg(#ssh_msg_channel_close{recipient_channel = ChannelId},
 
 handle_msg(#ssh_msg_channel_data{recipient_channel = ChannelId,
 				 data = Data}, 
-	   Connection, _, _SSH) ->
+	   Connection, _, SSH) ->
+    {ok, _NewHooks} = ssh_connection_hooks:call_channel_data(ChannelId, 0, Data, SSH, SSH#ssh.connection_hooks),
     channel_data_reply_msg(ChannelId, Connection, 0, Data);
 
 handle_msg(#ssh_msg_channel_extended_data{recipient_channel = ChannelId,
 					  data_type_code = DataType,
 					  data = Data}, 
-	   Connection, _, _SSH) ->
+	   Connection, _, SSH) ->
+    {ok, _NewHooks} = ssh_connection_hooks:call_channel_data(ChannelId, DataType, Data, SSH, SSH#ssh.connection_hooks),
     channel_data_reply_msg(ChannelId, Connection, DataType, Data);
 
 handle_msg(#ssh_msg_channel_window_adjust{recipient_channel = ChannelId,
@@ -890,7 +893,7 @@ handle_msg(#ssh_msg_channel_open{channel_type = "session" = Type,
 				 initial_window_size = WindowSz,
 				 maximum_packet_size = PacketSz}, 
 	   #connection{options = SSHopts} = Connection0,
-	   server, _SSH) ->
+	   server, SSH) ->
     MinAcceptedPackSz =
         ?GET_OPT(minimal_remote_max_packet_size, SSHopts),
     
@@ -898,8 +901,17 @@ handle_msg(#ssh_msg_channel_open{channel_type = "session" = Type,
 	MinAcceptedPackSz =< PacketSz ->
 	    try setup_session(Connection0, RemoteId,
 			      Type, WindowSz, PacketSz) of
-		Result ->
-		    Result
+		{Replies, Connection1} ->
+                    %% Call connection hooks for channel open
+                    case ssh_connection_hooks:call_channel_open(Type, element(2, lists:keyfind(connection_reply, 1, Replies))#ssh_msg_channel_open_confirmation.sender_channel, SSH, SSH#ssh.connection_hooks) of
+                        {ok, NewHooks} ->
+                            {Replies, Connection1};
+                        {stop, {deny, Reason, _}, NewHooks} ->
+                            FailMsg = channel_open_failure_msg(RemoteId, 
+                                                              ?SSH_OPEN_ADMINISTRATIVELY_PROHIBITED,
+                                                              Reason, "en"),
+                            {[{connection_reply, FailMsg}], Connection0}
+                    end
 	    catch _:_ ->
 		    FailMsg = channel_open_failure_msg(RemoteId, 
 						       ?SSH_OPEN_CONNECT_FAILED,
@@ -1129,17 +1141,17 @@ handle_msg(#ssh_msg_channel_request{recipient_channel = ChannelId,
                                        binary_to_list(SigName)});
 
 handle_msg(#ssh_msg_channel_request{recipient_channel = ChannelId,
-				    request_type = "subsystem",
+				    request_type = "subsystem" = Type,
 				    want_reply = WantReply,
 				    data = Data},
 	   #connection{channel_cache = Cache} = Connection, server, SSH) ->
     <<?DEC_BIN(SsName,_SsLen)>> = Data,
     #channel{remote_id=RemoteId} = Channel = 
-	ssh_client_channel:cache_lookup(Cache, ChannelId), 
+	ssh_client_channel:cache_lookup(Cache, ChannelId),
+    {ok, _NewHooks} = ssh_connection_hooks:call_channel_request(ChannelId, Type, Data, WantReply, SSH, SSH#ssh.connection_hooks),
     Reply =
         case start_subsystem(SsName, Connection, Channel,
-                             {subsystem, ChannelId, WantReply, binary_to_list(SsName)},
-                             SSH#ssh.auth_context) of
+                             {subsystem, ChannelId, WantReply, binary_to_list(SsName)}) of
             {ok, Pid} ->
                 erlang:monitor(process, Pid),
                 ssh_client_channel:cache_update(Cache, Channel#channel{user=Pid}),
@@ -1178,7 +1190,7 @@ handle_msg(#ssh_msg_channel_request{recipient_channel = ChannelId,
     PtyRequest = {TermName, Width, Height,
 		  PixWidth, PixHeight, PtyOpts},
     handle_cli_msg(Connection, ChannelId,
-		   {pty, ChannelId, WantReply, PtyRequest}, SSH#ssh.auth_context);
+		   {pty, ChannelId, WantReply, PtyRequest});
 
 handle_msg(#ssh_msg_channel_request{request_type = "pty-req"},
 	   Connection, client, _SSH) ->
@@ -1186,11 +1198,12 @@ handle_msg(#ssh_msg_channel_request{request_type = "pty-req"},
     {[], Connection};
 
 handle_msg(#ssh_msg_channel_request{recipient_channel = ChannelId,
-				    request_type = "shell",
+				    request_type = "shell" = Type,
 				    want_reply = WantReply},
 	   Connection, server, SSH) ->
+    {ok, _NewHooks} = ssh_connection_hooks:call_channel_request(ChannelId, Type, <<>>, WantReply, SSH, SSH#ssh.connection_hooks),
     handle_cli_msg(Connection, ChannelId,
-		   {shell, ChannelId, WantReply}, SSH#ssh.auth_context);
+		   {shell, ChannelId, WantReply});
  
 handle_msg(#ssh_msg_channel_request{request_type = "shell"},
 	   Connection, client, _SSH) ->
@@ -1198,13 +1211,14 @@ handle_msg(#ssh_msg_channel_request{request_type = "shell"},
     {[], Connection};
 
 handle_msg(#ssh_msg_channel_request{recipient_channel = ChannelId,
-				    request_type = "exec",
+				    request_type = "exec" = Type,
 				    want_reply = WantReply,
 				    data = Data},
 	   Connection, server, SSH) ->
     <<?DEC_BIN(Command, _Len)>> = Data,
+    {ok, _NewHooks} = ssh_connection_hooks:call_channel_request(ChannelId, Type, Data, WantReply, SSH, SSH#ssh.connection_hooks),
     handle_cli_msg(Connection, ChannelId,
-		   {exec, ChannelId, WantReply, binary_to_list(Command)}, SSH#ssh.auth_context);
+		   {exec, ChannelId, WantReply, binary_to_list(Command)});
 	
 handle_msg(#ssh_msg_channel_request{request_type = "exec"},
 	   Connection, client, _SSH) ->
@@ -1218,7 +1232,7 @@ handle_msg(#ssh_msg_channel_request{recipient_channel = ChannelId,
 	   Connection, server, SSH) ->
     <<?DEC_BIN(Var,_VarLen), ?DEC_BIN(Value,_ValLen)>> = Data,
     handle_cli_msg(Connection, ChannelId,
- 		   {env, ChannelId, WantReply, Var, Value}, SSH#ssh.auth_context);
+ 		   {env, ChannelId, WantReply, Var, Value});
 
 handle_msg(#ssh_msg_channel_request{request_type = "env"},
 	   Connection, client, _SSH) ->
@@ -1495,22 +1509,22 @@ setup_session(#connection{channel_cache = Cache,
 start_cli(#connection{options = Options, 
 		      cli_spec = CliSpec,
 		      exec = Exec,
-		      connection_supervisor = ConnectionSup}, ChannelId, AuthContext) ->
+		      connection_supervisor = ConnectionSup}, ChannelId) ->
     case CliSpec of
         no_cli ->
             {error, cli_disabled};
         {CbModule, Args} ->
-            ssh_connection_sup:start_channel(server, ConnectionSup, self(), CbModule, ChannelId, Args, Exec, Options, AuthContext)
+            ssh_connection_sup:start_channel(server, ConnectionSup, self(), CbModule, ChannelId, Args, Exec, Options)
     end.
 
 
 start_subsystem(BinName, #connection{options = Options,
                                      connection_supervisor = ConnectionSup},
-	       #channel{local_id = ChannelId}, _ReplyMsg, AuthContext) ->
+	       #channel{local_id = ChannelId}, _ReplyMsg) ->
     Name = binary_to_list(BinName),
     case check_subsystem(Name, Options) of
 	{Callback, Opts} when is_atom(Callback), Callback =/= none ->
-            ssh_connection_sup:start_channel(server, ConnectionSup, self(), Callback, ChannelId, Opts, undefined, Options, AuthContext);
+            ssh_connection_sup:start_channel(server, ConnectionSup, self(), Callback, ChannelId, Opts, undefined, Options);
         {none, _} ->
             {error, bad_subsystem};
 	{_, _} ->
@@ -1857,12 +1871,12 @@ backwards_compatible([Value| Rest], Acc) ->
 %%% Called at the finnish of handle_msg(#ssh_msg_channel_request,...)
 %%%
 
-handle_cli_msg(C0, ChId, Reply0, AuthContext) ->
+handle_cli_msg(C0, ChId, Reply0) ->
     Cache = C0#connection.channel_cache,
     Ch0 = ssh_client_channel:cache_lookup(Cache, ChId),
     case Ch0#channel.user of
         undefined ->
-            case start_cli(C0, ChId, AuthContext) of
+            case start_cli(C0, ChId) of
                 {ok, Pid} ->
                     erlang:monitor(process, Pid),
                     Ch = Ch0#channel{user = Pid},

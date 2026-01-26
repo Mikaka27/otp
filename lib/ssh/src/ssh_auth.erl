@@ -241,8 +241,9 @@ handle_userauth_request(#ssh_msg_userauth_request{user = User,
     Password = unicode:characters_to_list(BinPwd),
     case check_password(User, Password, Ssh) of
 	{true,Ssh1} ->
+	    {ok, NewHooks} = ssh_connection_hooks:call_auth_completed(User, "password", Password, Ssh1#ssh.connection_hooks),
 	    {authorized, User,
-	     {#ssh_msg_userauth_success{}, Ssh1}
+	     {#ssh_msg_userauth_success{}, Ssh1#ssh{connection_hooks = NewHooks}}
             };
 	{false,Ssh1}  ->
 	    {not_authorized, {User, {error,"Bad user or password"}}, 
@@ -342,8 +343,9 @@ handle_userauth_request(#ssh_msg_userauth_request{user = User,
         verify_sig(SessionId, User, "ssh-connection", BAlg, KeyBlob, SigWLen, Ssh)
     of
 	{true, Ssh1} ->
+	    {ok, NewHooks} = ssh_connection_hooks:call_auth_completed(User, "publickey", KeyBlob, Ssh1#ssh.connection_hooks),
 	    {authorized, User, 
-             {#ssh_msg_userauth_success{}, Ssh1}
+             {#ssh_msg_userauth_success{}, Ssh1#ssh{connection_hooks = NewHooks}}
             };
 	{false, Ssh1} ->
 	    {not_authorized, {User, undefined}, 
@@ -466,8 +468,9 @@ handle_userauth_info_response(#ssh_msg_userauth_info_response{num_responses = 1,
               Ssh1}};
 
 	{true,Ssh1} ->
+	    {ok, NewHooks} = ssh_connection_hooks:call_auth_completed(User, "keyboard-interactive", Password, Ssh1#ssh.connection_hooks),
 	    {authorized, User,
-	     {#ssh_msg_userauth_success{}, Ssh1}};
+	     {#ssh_msg_userauth_success{}, Ssh1#ssh{connection_hooks = NewHooks}}};
 
 	{false,Ssh1} ->
 	    {not_authorized, {User, {error,"Bad user or password"}}, 
@@ -553,8 +556,6 @@ pre_verify_sig(User, KeyBlob,  #ssh{opts=Opts} = Ssh) ->
 	Key = ssh_message:ssh2_pubkey_decode(KeyBlob), % or exception
         case ssh_transport:call_KeyCb(is_auth_key, [Key, User], Opts) of
             true -> {true, Ssh};
-            {true, AuthContext} when is_map(AuthContext) -> 
-                {true, Ssh#ssh{auth_context = AuthContext}};
             false -> {false, Ssh}
         end
     catch
@@ -571,10 +572,6 @@ verify_sig(SessionId, User, Service, AlgBin, KeyBlob, SigWLen, #ssh{opts=Opts} =
         Key = ssh_message:ssh2_pubkey_decode(KeyBlob), % or exception
         case ssh_transport:call_KeyCb(is_auth_key, [Key, User], Opts) of
             true -> ok;
-            {true, AuthContext} when is_map(AuthContext) -> 
-                %% Store auth context for later use
-                put(ssh_auth_context, AuthContext),
-                ok;
             false -> throw(auth_failed)
         end,
         PlainText = build_sig_data(SessionId, User, Service, KeyBlob, Alg),
@@ -582,17 +579,11 @@ verify_sig(SessionId, User, Service, AlgBin, KeyBlob, SigWLen, #ssh{opts=Opts} =
         <<?UINT32(AlgLen), _Alg:AlgLen/binary,
           ?UINT32(SigLen), Sig:SigLen/binary>> = AlgSig,
         case ssh_transport:verify(PlainText, list_to_existing_atom(Alg), Sig, Key, Ssh) of
-            true -> 
-                %% Retrieve and apply auth context
-                case erase(ssh_auth_context) of
-                    undefined -> {true, Ssh};
-                    AuthCtx -> {true, Ssh#ssh{auth_context = AuthCtx}}
-                end;
+            true -> {true, Ssh};
             false -> {false, Ssh}
         end
     catch
 	_:_ ->
-	    erase(ssh_auth_context),
 	    {false, Ssh}
     end.
 

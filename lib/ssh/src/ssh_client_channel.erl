@@ -314,20 +314,20 @@ sets the `trap_exit` flag to `true`.
       CbInitArgs :: [term()],
       ChannelRef :: pid().
 start_link(ConnectionManager, ChannelId, CallBack, CbInitArgs) ->
-    start_link(ConnectionManager, ChannelId, CallBack, CbInitArgs, undefined, #{}).
-
--doc false.
-start_link(ConnectionManager, ChannelId, CallBack, CbInitArgs, Exec) ->
-    start_link(ConnectionManager, ChannelId, CallBack, CbInitArgs, Exec, #{}).
-
--doc false.
-start_link(ConnectionManager, ChannelId, CallBack, CbInitArgs, Exec, AuthContext) ->
     Options = [{channel_cb, CallBack},
 	       {channel_id, ChannelId},
 	       {init_args, CbInitArgs},
 	       {cm, ConnectionManager},
-	       {exec, Exec},
-	       {auth_context, AuthContext}],
+	       {exec, undefined}],
+    gen_server:start_link(?MODULE, [Options], []).
+
+-doc false.
+start_link(ConnectionManager, ChannelId, CallBack, CbInitArgs, Exec) ->
+    Options = [{channel_cb, CallBack},
+	       {channel_id, ChannelId},
+	       {init_args, CbInitArgs},
+	       {cm, ConnectionManager},
+	       {exec, Exec}],
     gen_server:start_link(?MODULE, [Options], []).
 
 -doc """
@@ -392,9 +392,8 @@ init([Options]) ->
     Cb = proplists:get_value(channel_cb, Options),
     ConnectionManager =  proplists:get_value(cm, Options),
     ChannelId = proplists:get_value(channel_id, Options),
-    AuthContext = proplists:get_value(auth_context, Options, #{}),
     process_flag(trap_exit, true),
-    try Cb:init(channel_cb_init_args(Options), AuthContext) of
+    try Cb:init(channel_cb_init_args(Options)) of
 	{ok, ChannelState} ->
 	    State = #state{cm = ConnectionManager, 
 			   channel_cb = Cb,

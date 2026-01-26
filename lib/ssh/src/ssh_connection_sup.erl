@@ -50,9 +50,9 @@ start_link(Role, Id, Socket, Options) ->
             Other
     end.
 
-start_channel(Role, SupPid, ConnRef, Callback, Id, Args, Exec, Opts, AuthContext) ->
+start_channel(Role, SupPid, ConnRef, Callback, Id, Args, Exec, Opts) ->
     ChannelSup = channel_supervisor(SupPid),
-    ssh_channel_sup:start_child(Role, ChannelSup, ConnRef, Callback, Id, Args, Exec, Opts, AuthContext).
+    ssh_channel_sup:start_child(Role, ChannelSup, ConnRef, Callback, Id, Args, Exec, Opts).
 
 tcpip_fwd_supervisor(ConnectionSup) ->
     find_child(tcpip_forward_acceptor_sup, ConnectionSup).

@@ -45,16 +45,11 @@
 	  channel,
 	  pty,
           encoding,
-          deduced_encoding, % OpenSSH sometimes lies about its encodeing. This variable
-                            % is for the process of guessing the peer encoding, taylord
-                            % after the behaviour of openssh.  If it says latin1 it is so.
-                            % It there arrives characters encoded in latin1 it is so. Otherwise
-                            % assume utf8 until otherwise is proved.
+          deduced_encoding,
 	  group,
 	  shell,
 	  exec,
-      tty,
-      auth_context = #{}  % Authentication context from is_auth_key
+      tty
 	 }).
 
 -define(EXEC_ERROR_STATUS, 255).
@@ -69,13 +64,11 @@
 %% Description: Initiates the CLI
 %%--------------------------------------------------------------------
 init([Shell, Exec]) ->
-    init([Shell, Exec], #{});
-init([Shell]) ->
-    init([Shell, undefined], #{}).
-
-init([Shell, Exec], AuthContext) ->
     TTY = prim_tty:init_ssh(#{input => false}, {80, 24}, utf8),
-    {ok, #state{shell = Shell, exec = Exec, tty = TTY, auth_context = AuthContext}}.
+    {ok, #state{shell = Shell, exec = Exec, tty = TTY}};
+init([Shell]) ->
+    TTY = prim_tty:init_ssh(#{input => false}, {80, 24}, utf8),
+    {ok, #state{shell = Shell, exec = undefined, tty = TTY}}.
 
 %%--------------------------------------------------------------------
 %% Function: handle_ssh_msg(Args) -> {ok, State} | {stop, ChannelId, State}
@@ -599,13 +592,6 @@ exec_direct(ConnectionHandler, ChannelId, Cmd, ExecSpec, WantReply, State) ->
                         User = proplists:get_value(user, ConnectionInfo),
                         {_, PeerAddr} = proplists:get_value(peer, ConnectionInfo),
                         ExecSpec(Cmd, User, PeerAddr);
-
-                    is_function(ExecSpec, 4) ->
-                        ConnectionInfo =
-                            ssh_connection_handler:connection_info(ConnectionHandler, [peer, user]),
-                        User = proplists:get_value(user, ConnectionInfo),
-                        {_, PeerAddr} = proplists:get_value(peer, ConnectionInfo),
-                        ExecSpec(Cmd, User, PeerAddr, State#state.auth_context);
 
                     true ->
                         {error, "Bad exec fun in server"}

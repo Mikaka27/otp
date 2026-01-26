@@ -171,8 +171,17 @@ code_change(_OldVsn, StateName, State, _Extra) ->
 %%====================================================================
 
 connected_state(Reply, Ssh1, User, Method, D0) ->
+    %% Call connection hooks after successful auth
+    Ssh2 = case ssh_connection_hooks:call_auth_completed(User, Method, undefined, Ssh1#ssh.connection_hooks) of
+        {ok, NewHooks} ->
+            Ssh1#ssh{connection_hooks = NewHooks};
+        {stop, {disconnect, Reason}, _} ->
+            throw({disconnect, Reason});
+        {stop, _, NewHooks} ->
+            Ssh1#ssh{connection_hooks = NewHooks}
+    end,
     D1 = #data{ssh_params=Ssh} =
-        ssh_connection_handler:send_msg(Reply, D0#data{ssh_params = Ssh1}),
+        ssh_connection_handler:send_msg(Reply, D0#data{ssh_params = Ssh2}),
     ssh_connection_handler:handshake(ssh_connected, D1),
     connected_fun(User, Method, D1),
     D1#data{auth_user=User,

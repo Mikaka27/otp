@@ -76,7 +76,9 @@
 	 disconnect/4,
 	 get_print_info/1,
          set_sock_opts/2, get_sock_opts/2,
-         prohibited_sock_option/1
+         prohibited_sock_option/1,
+         get_hook_state/2,
+         get_all_hook_states/1
 	]).
 
 %%% Behaviour callbacks
@@ -402,6 +404,14 @@ renegotiate(ConnectionHandler) ->
 alg(ConnectionHandler) ->
     call(ConnectionHandler, get_alg).
 
+%%--------------------------------------------------------------------
+get_hook_state(ConnectionHandler, Module) ->
+    call(ConnectionHandler, {get_hook_state, Module}).
+
+%%--------------------------------------------------------------------
+get_all_hook_states(ConnectionHandler) ->
+    call(ConnectionHandler, get_all_hook_states).
+
 %%====================================================================
 %% Intitialisation
 %%====================================================================
@@ -442,11 +452,13 @@ init_ssh_record(Role, Socket, Opts) ->
 
 init_ssh_record(Role, Socket, PeerAddr, Opts) ->
     AuthMethods = ?GET_OPT(auth_methods, Opts),
+    Hooks = ssh_connection_hooks:init_hooks(self(), Opts),
     S0 = #ssh{role = Role,
 	      opts = Opts,
 	      userauth_supported_methods = AuthMethods,
 	      available_host_keys = available_hkey_algorithms(Role, Opts),
-	      random_length_padding = ?GET_OPT(max_random_length_padding, Opts)
+	      random_length_padding = ?GET_OPT(max_random_length_padding, Opts),
+	      connection_hooks = Hooks
 	   },
 
     {Vsn, Version} = ssh_transport:versions(Role, Opts),
@@ -858,6 +870,16 @@ handle_event({timeout, renegotiation_alive}, _, StateName, D) ->
 handle_event({call,From}, get_alg, _, D) ->
     #ssh{algorithms=Algs} = D#data.ssh_params,
     {keep_state_and_data, [{reply,From,Algs}]};
+
+handle_event({call,From}, {get_hook_state, Module}, _, D) ->
+    #ssh{connection_hooks=Hooks} = D#data.ssh_params,
+    Reply = ssh_connection_hooks:get_hook_state(Module, Hooks),
+    {keep_state_and_data, [{reply,From,Reply}]};
+
+handle_event({call,From}, get_all_hook_states, _, D) ->
+    #ssh{connection_hooks=Hooks} = D#data.ssh_params,
+    Reply = ssh_connection_hooks:get_all_hook_states(Hooks),
+    {keep_state_and_data, [{reply,From,Reply}]};
 
 handle_event(cast, _, StateName, _) when not ?CONNECTED(StateName) ->
     {keep_state_and_data, [postpone]};
@@ -1487,10 +1509,12 @@ terminate(_, {wait_for_socket, _}, _) ->
     ok;
 
 terminate(normal, _StateName, D) ->
+    ssh_connection_hooks:call_terminate(normal, (D#data.ssh_params)#ssh.connection_hooks),
     close_transport(D);
 
 terminate({shutdown,_R}, _StateName, D) ->
     %% Internal termination, usually already reported via ?send_disconnect resulting in a log entry
+    ssh_connection_hooks:call_terminate({shutdown,_R}, (D#data.ssh_params)#ssh.connection_hooks),
     close_transport(D);
 
 terminate(shutdown, _StateName, D0) ->
@@ -1499,6 +1523,7 @@ terminate(shutdown, _StateName, D0) ->
     D = send_msg(#ssh_msg_disconnect{code = ?SSH_DISCONNECT_BY_APPLICATION,
                                      description = "Terminated (shutdown) by supervisor"},
                  D0),
+    ssh_connection_hooks:call_terminate(shutdown, (D#data.ssh_params)#ssh.connection_hooks),
     close_transport(D);
 
 terminate(Reason, StateName, D0) ->
@@ -1508,6 +1533,7 @@ terminate(Reason, StateName, D0) ->
                                             "Internal error",
                                             io_lib:format("Reason: ~p",[Reason]),
                                             StateName, D0),
+    ssh_connection_hooks:call_terminate(Reason, (D#data.ssh_params)#ssh.connection_hooks),
     close_transport(D).
 
 %%--------------------------------------------------------------------
