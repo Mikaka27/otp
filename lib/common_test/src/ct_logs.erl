@@ -697,7 +697,7 @@ logger(Parent, Mode, Verbosity, CustomStylesheet) ->
 	    %% dir) so logs are independent of Common Test installation
 	    {ok,Cwd} = file:get_cwd(),
 	    CTPath = code:lib_dir(common_test),
-	    PrivFiles = [?css_default,?jquery_script,?tablesorter_script],
+	    PrivFiles = [?css_default,?jquery_script,?jquery_migrate_script,?tablesorter_script],
 	    PrivFilesSrc = [filename:join(filename:join(CTPath, "priv"), F) ||
 			       F <- PrivFiles],
 	    PrivFilesDestTop = [filename:join(Cwd, F) || F <- PrivFiles],
@@ -1713,6 +1713,9 @@ header(Title, SubTitle, TableCols, CustomStylesheet) ->
     JQueryFile =
 	xhtml(fun() -> "" end, 
 	      fun() -> make_relative(locate_priv_file(?jquery_script)) end),
+    JQueryMigrateFile =
+	xhtml(fun() -> "" end, 
+	      fun() -> make_relative(locate_priv_file(?jquery_migrate_script)) end),
     TableSorterFile =
 	xhtml(fun() -> "" end, 
 	      fun() -> make_relative(locate_priv_file(?tablesorter_script)) end),
@@ -1734,6 +1737,9 @@ header(Title, SubTitle, TableCols, CustomStylesheet) ->
      CustomCSSFileHtml,
      xhtml("",
 	   ["<script type=\"text/javascript\" src=\"",JQueryFile,
+	    "\"></script>\n"]),
+     xhtml("",
+	   ["<script type=\"text/javascript\" src=\"",JQueryMigrateFile,
 	    "\"></script>\n"]),
      xhtml("",
 	   ["<script type=\"text/javascript\" src=\"",TableSorterFile,
@@ -3297,6 +3303,11 @@ get_ts_html_wrapper(TestName, Logdir, PrintLabel, Cwd, TableCols, Encoding, Cust
 		      fun() -> make_relative(locate_priv_file(?jquery_script),
 					     Cwd)
 		      end),
+	    JQueryMigrateFile =
+		xhtml(fun() -> "" end, 
+		      fun() -> make_relative(locate_priv_file(?jquery_migrate_script),
+					     Cwd)
+		      end),
 	    TableSorterFile =
 		xhtml(fun() -> "" end, 
 		      fun() -> make_relative(locate_priv_file(?tablesorter_script),
@@ -3319,6 +3330,7 @@ get_ts_html_wrapper(TestName, Logdir, PrintLabel, Cwd, TableCols, Encoding, Cust
 	      "\" type=\"text/css\"></link>\n",
               CustomCSSFileHtml,
 	      "<script type=\"text/javascript\" src=\"", JQueryFile, "\"></script>\n",
+	      "<script type=\"text/javascript\" src=\"", JQueryMigrateFile, "\"></script>\n",
 	      "<script type=\"text/javascript\" src=\"", TableSorterFile, "\"></script>\n"] ++
 	      TableSorterScript ++ ["</head>\n","<body>\n", LabelStr, "\n"],
 	     ["<center>\n<br /><hr /><p>\n",
