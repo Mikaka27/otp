@@ -2508,23 +2508,28 @@ add_jobs([{TestDir,Suite,Confs}|Tests], Skip, Opts, CleanUp) when
 		    ([C]) when is_atom(C) -> "." ++ atom_to_list(C);
 		    (Cs) when is_list(Cs) -> ".cases"
 		 end,
-    GrTestName =
+    {GrDisplayName, GrDirName} =
 	case Confs of
 	    [Conf] ->
 		case Group(Conf) of
 		    GrName when is_atom(GrName) ->
-			"." ++ atom_to_list(GrName) ++
-			    TCTestName(TestCases(Conf));
-		    _ ->
-			".groups" ++ TCTestName(TestCases(Conf))
+                TC = "." ++ atom_to_list(GrName) ++
+                TCTestName(TestCases(Conf)),
+                {TC, TC};
+            Groups ->
+                TC = TCTestName(TestCases(Conf)),
+                {"." ++ get_test_group_display_name(Groups) ++ TC, ".groups" ++ TC}
 		end;
 	    _ ->
-		".groups"
+        % TODO: Fix
+		{".groups", ".groups"}
 	end,
-    TestName = get_name(TestDir) ++ "." ++ atom_to_list(Suite) ++ GrTestName,
+    TestDisplayName = get_name(TestDir) ++ "." ++ atom_to_list(Suite) ++ GrDisplayName,
+    TestDirName = get_name(TestDir) ++ "." ++ atom_to_list(Suite) ++ GrDirName,
     case maybe_interpret(Suite, init_per_group, Opts) of
 	ok ->
-	    case catch test_server_ctrl:add_conf_with_skip(TestName,
+	    case catch test_server_ctrl:add_conf_with_skip(TestDisplayName,
+							   TestDirName,
 							   Suite,
 							   Confs,
 							   skiplist(TestDir,
@@ -3307,3 +3312,6 @@ ensure_atom(List) when is_list(List) ->
     [ensure_atom(Item) || Item <- List];
 ensure_atom(Other) ->				
     Other.
+
+get_test_group_display_name(Groups) when is_list(Groups) ->
+    lists:flatten(io_lib:format("~w", [Groups])).
