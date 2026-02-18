@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>CT Results - Spec Differentiation</title>
+<style>
+body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }
+.container { max-width: 1400px; margin: 0 auto; background: white; padding: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+h1 { color: #333; border-bottom: 2px solid #0066cc; padding-bottom: 10px; }
+table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+th { background: #0066cc; color: white; padding: 10px; text-align: left; }
+td { padding: 8px; border-bottom: 1px solid #ddd; }
+.pass { color: #28a745; font-weight: bold; }
+.fail { color: #dc3545; font-weight: bold; }
+.spec-hash { font-family: monospace; color: #666; font-size: 0.85em; }
+.run-id { font-weight: bold; color: #0066cc; }
+.toggle { cursor: pointer; color: #0066cc; user-select: none; display: inline-block; width: 20px; }
+.collapsed { display: none; }
+.nested { padding-left: 30px; background: #f9f9f9; }
+.spec-info { background: #e3f2fd; padding: 8px; margin: 5px 0; border-left: 3px solid #1976d2; font-size: 0.9em; }
+.timestamp { color: #666; font-size: 0.9em; }
+</style>
+</head>
+<body>
+<div class="container">
+<h1>Common Test Results - Multiple Spec Configurations</h1>
+
+<p><strong>Approach:</strong> Each test run is identified by a hash of its configuration (groups + cases). 
+Runs with identical configurations overwrite previous results, while different configurations are kept as separate entries.</p>
+
+<table>
+<tr>
+<th>Timestamp</th>
+<th>Suite</th>
+<th>Run ID / Spec Hash</th>
+<th>Result</th>
+<th>Pass/Fail/Skip</th>
+</tr>
+
+<tr>
+<td class="timestamp">2025-01-15 14:32:01</td>
+<td><strong>my_test_SUITE</strong></td>
+<td>
+<span class="run-id">Run #3</span><br>
+<span class="spec-hash">spec:a7f3c2e1</span>
+</td>
+<td class="pass">OK</td>
+<td>98/2/5</td>
+</tr>
+<tr>
+<td colspan="5" class="nested">
+<div class="spec-info">
+<strong>Configuration:</strong> Groups: [perf_group, stress_group, integration_group, ...] (10 groups, 100 cases)
+</div>
+<span class="toggle" onclick="toggle('run3')">▶</span> View details
+<div id="run3" class="collapsed" style="margin-top: 10px;">
+<strong>Groups:</strong> perf_group, stress_group, integration_group, load_group, api_group, 
+db_group, cache_group, network_group, security_group, monitoring_group<br>
+<strong>Total cases:</strong> 100
+</div>
+</td>
+</tr>
+
+<tr>
+<td class="timestamp">2025-01-15 12:15:43</td>
+<td><strong>my_test_SUITE</strong></td>
+<td>
+<span class="run-id">Run #2</span><br>
+<span class="spec-hash">spec:b9e4d8f2</span>
+</td>
+<td class="pass">OK</td>
+<td>95/0/5</td>
+</tr>
+<tr>
+<td colspan="5" class="nested">
+<div class="spec-info">
+<strong>Configuration:</strong> Groups: [unit_group, functional_group, regression_group, ...] (10 groups, 100 cases)
+</div>
+<span class="toggle" onclick="toggle('run2')">▶</span> View details
+<div id="run2" class="collapsed" style="margin-top: 10px;">
+<strong>Groups:</strong> unit_group, functional_group, regression_group, smoke_group, sanity_group,
+edge_case_group, boundary_group, validation_group, error_handling_group, recovery_group<br>
+<strong>Total cases:</strong> 100
+</div>
+</td>
+</tr>
+
+<tr>
+<td class="timestamp">2025-01-15 09:22:18</td>
+<td><strong>my_test_SUITE</strong></td>
+<td>
+<span class="run-id">Run #1</span><br>
+<span class="spec-hash">spec:a7f3c2e1</span>
+</td>
+<td class="fail">FAILED</td>
+<td>93/5/7</td>
+</tr>
+<tr>
+<td colspan="5" class="nested">
+<div class="spec-info">
+<strong>Configuration:</strong> Groups: [perf_group, stress_group, integration_group, ...] (10 groups, 100 cases)
+<br><strong>Note:</strong> This run was overwritten by Run #3 (same spec hash)
+</div>
+<span class="toggle" onclick="toggle('run1')">▶</span> View details
+<div id="run1" class="collapsed" style="margin-top: 10px;">
+<strong>Groups:</strong> perf_group, stress_group, integration_group, load_group, api_group, 
+db_group, cache_group, network_group, security_group, monitoring_group<br>
+<strong>Total cases:</strong> 100<br>
+<em style="color: #999;">Archived - superseded by newer run with same configuration</em>
+</div>
+</td>
+</tr>
+</table>
+
+<div style="margin-top: 30px; padding: 20px; background: #fff3cd; border-left: 4px solid #ffc107;">
+<h3 style="margin-top: 0;">How Spec Differentiation Works:</h3>
+<ul>
+<li><strong>Spec Hash:</strong> Generated from sorted list of groups + cases in the test spec</li>
+<li><strong>Same hash:</strong> New run overwrites previous results (e.g., Run #3 replaces Run #1)</li>
+<li><strong>Different hash:</strong> New run creates separate entry (e.g., Run #2 kept alongside Run #3)</li>
+<li><strong>Display:</strong> Show spec hash + human-readable run ID for easy identification</li>
+</ul>
+
+<h4>Alternative Identification Methods:</h4>
+<ol>
+<li><strong>Spec file name:</strong> Use test spec filename (e.g., "perf_tests.spec" vs "unit_tests.spec")</li>
+<li><strong>Label/Tag:</strong> Allow user to provide custom label when running tests</li>
+<li><strong>Group list hash:</strong> Hash only group names (simpler, ignores case order)</li>
+<li><strong>Full config hash:</strong> Include all test parameters (most precise)</li>
+</ol>
+</div>
+
+</div>
+
+<script>
+function toggle(id) {
+  const el = document.getElementById(id);
+  const toggles = document.querySelectorAll(`[onclick*="${id}"]`);
+  if (el.classList.contains('collapsed')) {
+    el.classList.remove('collapsed');
+    toggles.forEach(t => {
+      if (t.classList.contains('toggle')) t.textContent = '▼';
+    });
+  } else {
+    el.classList.add('collapsed');
+    toggles.forEach(t => {
+      if (t.classList.contains('toggle')) t.textContent = '▶';
+    });
+  }
+}
+</script>
+</body>
+</html>
