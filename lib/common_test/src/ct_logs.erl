@@ -1530,10 +1530,20 @@ make_one_index_entry1(SuiteName, Link, Label, Success, Fail, UserSkip, AutoSkip,
                  "s</td>\n"]
         end,
 
+    io:fwrite("Starting to get SuiteDisplayName~n"),
+    SuiteDisplayName =
+        case get_display_name(Link) of
+            undefined ->
+                SuiteName;
+            Other ->
+                Other
+        end,
+    io:fwrite("SuiteDisplayName: ~p~n", [SuiteDisplayName]),
+
     {[xhtml("<tr valign=top>\n",
 	    ["<tr class=\"",odd_or_even(),"\">\n"]),
       xhtml("<td><font size=\"-1\"><a href=\"", "<td><a href=\""),
-      LogFileURI,"\">",SuiteName,"</a>", CrashDumpLink,
+      LogFileURI,"\">",SuiteDisplayName,"</a>", CrashDumpLink,
       xhtml("</font></td>\n", "</td>\n"),
       Lbl, Timestamp,
       "<td align=right>",integer_to_list(Success),"</td>\n",
@@ -3515,3 +3525,25 @@ write_log_cache(LogCacheBin) when is_binary(LogCacheBin) ->
     _ = file:write_file(TmpFile,LogCacheBin),
     _ = file:rename(TmpFile,?log_cache_name),
     ok.
+
+get_display_name(Dir) ->
+    LogFile = filename:join(Dir, ?suitelog_name),
+    case file:open(LogFile, [read]) of
+        {ok, Fd} ->
+            get_display_name(Fd, file:read_line(Fd));
+        {error, _Reason} ->
+            undefined
+    end.
+
+get_display_name(Fd, {ok, "=display_name" ++ Rest}) ->
+    file:close(Fd),
+    string:chomp(Rest);
+get_display_name(Fd, eof) ->
+    file:close(Fd),
+    undefined;
+get_display_name(Fd, {error, _Reason}) ->
+    file:close(Fd),
+    undefined;
+get_display_name(Fd, _) ->
+    get_display_name(Fd, file:read_line(Fd)).
+

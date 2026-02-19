@@ -47,9 +47,11 @@
 	 add_case/2, add_case/3, add_cases/2, add_cases/3]).
 -export([add_dir_with_skip/3, add_dir_with_skip/4, add_tests_with_skip/3]).
 -export([add_module_with_skip/2, add_module_with_skip/3,
+	 add_module_with_skip/4,
 	 add_conf_with_skip/5,
 	 add_case_with_skip/3, add_case_with_skip/4,
-	 add_cases_with_skip/3, add_cases_with_skip/4]).
+	 add_cases_with_skip/3, add_cases_with_skip/4,
+	 add_cases_with_skip/5]).
 -export([jobs/0, run_test/1, wait_finish/0, idle_notify/1,
 	 abort_current_testcase/1, abort/0]).
 -export([start_get_totals/1, stop_get_totals/0]).
@@ -213,11 +215,15 @@ add_module_with_skip(Mod, Skip) when is_atom(Mod) ->
 add_module_with_skip(Name, Mods, Skip) when is_list(Mods) ->
     add_job(cast_to_list(Name), lists:map(fun(Mod) -> {Mod,all} end, Mods), Skip).
 
+add_module_with_skip(DisplayName, Name, Mods, Skip) when is_list(Mods) ->
+    TopCase = lists:map(fun(Mod) -> {Mod,all} end, Mods),
+    add_job(cast_to_list(DisplayName), cast_to_list(Name), TopCase, Skip).
+
 add_conf_with_skip(DisplayName, DirName, Mod, Conf, Skip) when is_tuple(Conf) ->
-    add_job({cast_to_list(DisplayName), cast_to_list(DirName)}, {Mod,[Conf]}, Skip);
+    add_job(cast_to_list(DisplayName), cast_to_list(DirName), {Mod,[Conf]}, Skip);
 
 add_conf_with_skip(DisplayName, DirName, Mod, Confs, Skip) when is_list(Confs) ->
-    add_job({cast_to_list(DisplayName), cast_to_list(DirName)}, {Mod,Confs}, Skip).
+    add_job(cast_to_list(DisplayName), cast_to_list(DirName), {Mod,Confs}, Skip).
 
 add_case_with_skip(Mod, Case, Skip) when is_atom(Mod), is_atom(Case) ->
     add_job(atom_to_list(Mod), {Mod,Case}, Skip).
@@ -230,6 +236,9 @@ add_cases_with_skip(Mod, Cases, Skip) when is_atom(Mod), is_list(Cases) ->
 
 add_cases_with_skip(Name, Mod, Cases, Skip) when is_atom(Mod), is_list(Cases) ->
     add_job(Name, {Mod,Cases}, Skip).
+
+add_cases_with_skip(DisplayName, Name, Mod, Cases, Skip) when is_atom(Mod), is_list(Cases) ->
+    add_job(DisplayName, Name, {Mod, Cases}, Skip).
 
 add_tests_with_skip(LogDir, Tests, Skip) ->
     add_job(LogDir,
@@ -461,13 +470,15 @@ get_hosts() ->
 add_job(Name, TopCase) ->
     add_job(Name, TopCase, []).
 
-add_job({DisplayName, DirName}, TopCase, Skip) ->
-    SuiteName = get_job_name(DirName),
+add_job(Name, TopCase, Skip) ->
+    add_job(Name, Name, TopCase, Skip).
+
+add_job(DisplayName, Name, TopCase, Skip) ->
+    io:fwrite("In add_job: DisplayName: ~p, Name: ~p~n", [DisplayName, Name]),
+    SuiteName = get_job_name(Name),
     Dir = filename:absname(SuiteName),
     SuiteDisplayName = get_job_name(DisplayName),
-    controller_call({add_job,Dir,SuiteName,SuiteDisplayName,TopCase,Skip});
-add_job(Name, TopCase, Skip) ->
-    add_job({Name, Name}, TopCase, Skip).
+    controller_call({add_job,Dir,SuiteName,SuiteDisplayName,TopCase,Skip}).
 
 get_job_name(".") ->
     "current_dir";

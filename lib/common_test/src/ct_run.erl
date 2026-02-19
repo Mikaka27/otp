@@ -2466,7 +2466,10 @@ add_jobs([{TestDir,[Suite],all}|Tests], Skip,
 add_jobs([{TestDir,Suites,all}|Tests], Skip,
 	 Opts, CleanUp) when is_list(Suites) ->
     Name = get_name(TestDir) ++ ".suites",
-    case catch test_server_ctrl:add_module_with_skip(Name, Suites,
+    io:fwrite("Startng to get DisplayName for suites~n"),
+    DisplayName = get_name(TestDir) ++ get_display_name(Suites),
+    io:fwrite("Retrieved DisplayName: ~p for Suites~n", [DisplayName]),
+    case catch test_server_ctrl:add_module_with_skip(DisplayName, Name, Suites,
 						     skiplist(TestDir,Skip)) of
 	{'EXIT',_} ->
 	    CleanUp;
@@ -2504,28 +2507,39 @@ add_jobs([{TestDir,Suite,Confs}|Tests], Skip, Opts, CleanUp) when
       element(1, hd(Confs)) == conf ->
     Group = fun(Conf) -> proplists:get_value(name, element(2, Conf)) end,
     TestCases = fun(Conf) -> element(4, Conf) end,
-    TCTestName = fun(all) -> "";
-		    ([C]) when is_atom(C) -> "." ++ atom_to_list(C);
-		    (Cs) when is_list(Cs) -> ".cases"
-		 end,
+    io:fwrite("Starting to get TCTestName fun~n"),
+    TCTestName = fun(_, all) -> "";
+                    (normal, [C]) when is_atom(C) -> "." ++ atom_to_list(C);
+                    (normal, Cs) when is_list(Cs) -> ".cases";
+                    (display, Cs) -> "." ++ get_display_name(Cs)
+      end,
+    io:fwrite("Starting to get GrDisplayName and GrDirName"),
     {GrDisplayName, GrDirName} =
 	case Confs of
 	    [Conf] ->
 		case Group(Conf) of
 		    GrName when is_atom(GrName) ->
-                TC = "." ++ atom_to_list(GrName) ++
-                TCTestName(TestCases(Conf)),
-                {TC, TC};
+                TCPrefix = "." ++ atom_to_list(GrName),
+                Cases = TestCases(Conf),
+                TCDisplay = TCPrefix ++ TCTestName(display, Cases),
+                TC = TCPrefix ++ TCTestName(normal, Cases),
+                {TCDisplay, TC};
             Groups ->
-                TC = TCTestName(TestCases(Conf)),
-                {"." ++ get_test_group_display_name(Groups) ++ TC, ".groups" ++ TC}
+                TCDisplayPrefix = "." ++ get_display_name(Groups),
+                TCPrefix = ".groups",
+                Cases = TestCases(Conf),
+                TCDisplay = TCDisplayPrefix ++ TCTestName(display, Cases),
+                TC = TCPrefix ++ TCTestName(normal, Cases),
+                {TCDisplay, TC}
 		end;
 	    _ ->
         % TODO: Fix
 		{".groups", ".groups"}
 	end,
+    io:fwrite("GrDisplayName: ~p, GrDirName: ~p~n", [GrDisplayName, GrDirName]),
     TestDisplayName = get_name(TestDir) ++ "." ++ atom_to_list(Suite) ++ GrDisplayName,
     TestDirName = get_name(TestDir) ++ "." ++ atom_to_list(Suite) ++ GrDirName,
+    io:fwrite("TestDisplayName: ~p~nTestDirName: ~p~n", [TestDisplayName, TestDirName]),
     case maybe_interpret(Suite, init_per_group, Opts) of
 	ok ->
 	    case catch test_server_ctrl:add_conf_with_skip(TestDisplayName,
@@ -2561,7 +2575,10 @@ add_jobs([{TestDir,Suite,Cases}|Tests],
     case maybe_interpret(Suite, Cases1, Opts) of
 	ok ->
 	    Name =  get_name(TestDir) ++ "." ++ atom_to_list(Suite) ++ ".cases",
-	    case catch test_server_ctrl:add_cases_with_skip(Name, Suite, Cases1,
+        io:fwrite("Starting to get DisplayName for cases~n"),
+        DisplayName = get_name(TestDir) ++ "." ++ atom_to_list(Suite) ++ "." ++ get_display_name(Cases1),
+        io:fwrite("Retrieved DisplayName: ~p for cases~n", [DisplayName]),
+	    case catch test_server_ctrl:add_cases_with_skip(DisplayName, Name, Suite, Cases1,
 							    skiplist(TestDir,
 								     Skip)) of
 		{'EXIT',_} ->
@@ -3313,5 +3330,7 @@ ensure_atom(List) when is_list(List) ->
 ensure_atom(Other) ->				
     Other.
 
-get_test_group_display_name(Groups) when is_list(Groups) ->
-    lists:flatten(io_lib:format("~w", [Groups])).
+get_display_name(Item) when is_atom(Item) ->
+    atom_to_list(Item);
+get_display_name(Items) when is_list(Items) ->
+    lists:flatten(io_lib:format("~p", [Items])).
