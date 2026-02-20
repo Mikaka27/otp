@@ -2507,7 +2507,7 @@ add_jobs([{TestDir,Suite,Confs}|Tests], Skip, Opts, CleanUp) when
       element(1, hd(Confs)) == conf ->
     Group = fun(Conf) -> proplists:get_value(name, element(2, Conf)) end,
     TestCases = fun(Conf) -> element(4, Conf) end,
-    io:fwrite("Starting to get TCTestName fun~n"),
+    % io:fwrite("Starting to get TCTestName fun~n"),
     TCTestName = fun(_, all) -> "";
                     (normal, [C]) when is_atom(C) -> "." ++ atom_to_list(C);
                     (normal, Cs) when is_list(Cs) -> ".cases";
