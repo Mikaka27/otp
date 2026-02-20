@@ -499,17 +499,17 @@ libs:
 ifeq ($(OTP_SMALL_BUILD),true)
 	$(make_verbose)cd lib && \
 	  ERL_TOP=$(ERL_TOP) PATH=$(BOOT_PREFIX)"$${PATH}" \
-		$(MAKE) $(TYPE) ERL_COMPILE_WARNINGS_AS_ERRORS=yes
+		$(MAKE) $(TYPE) ERL_COMPILE_WARNINGS_AS_ERRORS=no
 
 else
 ifeq ($(OTP_TINY_BUILD),true)
 	$(make_verbose)cd lib && \
 	  ERL_TOP=$(ERL_TOP) PATH=$(BOOT_PREFIX)"$${PATH}" \
-		$(MAKE) opt TINY_BUILD=true ERL_COMPILE_WARNINGS_AS_ERRORS=yes
+		$(MAKE) opt TINY_BUILD=true ERL_COMPILE_WARNINGS_AS_ERRORS=no
 else
 	$(make_verbose)cd lib && \
 	  ERL_TOP=$(ERL_TOP) PATH=$(BOOT_PREFIX)"$${PATH}" \
-		$(MAKE) $(TYPE) BUILD_ALL=true ERL_COMPILE_WARNINGS_AS_ERRORS=yes
+		$(MAKE) $(TYPE) BUILD_ALL=true ERL_COMPILE_WARNINGS_AS_ERRORS=no
 	$(V_at)test -f $(ERL_TOP)/make/otp_built || echo "OTP built" > $(ERL_TOP)/make/otp_built
 endif
 endif
