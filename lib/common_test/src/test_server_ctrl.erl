@@ -474,7 +474,7 @@ add_job(Name, TopCase, Skip) ->
     add_job(Name, Name, TopCase, Skip).
 
 add_job(Name, SpecName, TopCase, Skip) ->
-    io:fwrite("In add_job: SpecName: ~p, Name: ~p~n", [SpecName, Name]),
+    % io:fwrite("In add_job: SpecName: ~p, Name: ~p~n", [SpecName, Name]),
     SuiteName = get_job_name(Name),
     Dir = filename:absname(SuiteName),
     SuiteSpecName = get_job_name(SpecName),
