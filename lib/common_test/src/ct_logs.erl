@@ -2511,11 +2511,9 @@ make_all_suites_index(When, CustomStylesheet) when is_atom(When) ->
 			end
 		end
 	end,	
-    % UseCache = disabled,
 
     Wildcard = logdir_prefix()++".*/*"++?logdir_ext,
     LogDirs = sort_ct_runs(filelib:wildcard(Wildcard)),
-    % io:fwrite("LogDirs: ~p~n", [LogDirs]),
 
     LogCacheInfo = get_cache_data(UseCache),
 
@@ -2528,7 +2526,6 @@ make_all_suites_index(When, CustomStylesheet) when is_atom(When) ->
 	    _WhyNot ->
 		%% no cache file exists (or feature has been disabled)
 		Sorted = sort_and_filter_logdirs(LogDirs),
-        % io:fwrite("Sorted: ~p~n", [Sorted]),
 		TempData = make_all_suites_index1(When,AbsIndexName,Sorted,CustomStylesheet),
 		notify_and_unlock_file(AbsIndexName),
 		
@@ -2704,7 +2701,6 @@ dir_diff_tests([LogDir|LogDirs], CachedTests, NewAdded, DeletedTests,
     %% check if the test already exists in the cache
     {New,DeletedTests1,ValidLast1,InvalidLast1} =
 	case lists:search(F, CachedTests) of
-	% case lists:keysearch(TestName,1,CachedTests) of
 	    {value,{_,_,_,_,{LastLogDir,_,_},_PrevLogDirs}} ->
 		LastLogTime = datestr_from_dirname(LastLogDir),
 		if Time > LastLogTime ->
@@ -2763,7 +2759,6 @@ dir_diff_tests([], _CachedTests, NewAdded, DeletedTests,
 delete_tests_from_cache(OldTests, LogCache=#log_cache{tests=Tests}) ->
     Tests2 = lists:foldl(fun({T, S},Tests1) ->
 				 lists:filter(fun({TN, SN, _, _, _, _}) -> T /= TN orelse S /= SN end, Tests1)
-				%  lists:keydelete(T,1,Tests1)
 			 end, Tests, OldTests),
     LogCache#log_cache{tests = Tests2}.
 
@@ -2783,7 +2778,6 @@ update_tests_in_cache(TempData,LogCache=#log_cache{tests=Tests}) ->
 	   true ->
 		lists:foldl(fun({TestName,SpecName,_,_,_,_},Cached) ->
 				    lists:filter(fun({TN, SN, _, _, _, _}) -> TestName /= TN orelse SpecName /= SN end, Cached)
-				    % lists:keydelete(TestName,1,Cached)
 			    end, Tests, TempData)
 	end,
     Tests1 = lists:keysort(1,TempData++Cached1),

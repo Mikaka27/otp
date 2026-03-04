@@ -2466,9 +2466,7 @@ add_jobs([{TestDir,[Suite],all}|Tests], Skip,
 add_jobs([{TestDir,Suites,all}|Tests], Skip,
 	 Opts, CleanUp) when is_list(Suites) ->
     Name = get_name(TestDir) ++ ".suites",
-    % io:fwrite("Startng to get SpecName for suites~n"),
     SpecName = get_name(TestDir) ++ get_spec_name(Suites),
-    % io:fwrite("Retrieved SpecName: ~p for Suites~n", [SpecName]),
     case catch test_server_ctrl:add_module_with_skip(Name, SpecName, Suites,
 						     skiplist(TestDir,Skip)) of
 	{'EXIT',_} ->
@@ -2507,13 +2505,11 @@ add_jobs([{TestDir,Suite,Confs}|Tests], Skip, Opts, CleanUp) when
       element(1, hd(Confs)) == conf ->
     Group = fun(Conf) -> proplists:get_value(name, element(2, Conf)) end,
     TestCases = fun(Conf) -> element(4, Conf) end,
-    % io:fwrite("Starting to get TCTestName fun~n"),
     TCTestName = fun(_, all) -> "";
                     (normal, [C]) when is_atom(C) -> "." ++ atom_to_list(C);
                     (normal, Cs) when is_list(Cs) -> ".cases";
                     (spec, Cs) -> "." ++ get_spec_name(Cs)
       end,
-    % io:fwrite("Starting to get GrSpecName and GrDirName"),
     {GroupSpecName, GroupName} =
 	case Confs of
 	    [Conf] ->
@@ -2536,10 +2532,8 @@ add_jobs([{TestDir,Suite,Confs}|Tests], Skip, Opts, CleanUp) when
         % TODO: recreate SpecName from multiple confs
 		{".groups", ".groups"}
 	end,
-    % io:fwrite("GrSpecName: ~p, GrDirName: ~p~n", [GroupSpecName, GroupName]),
     TestSpecName = get_name(TestDir) ++ "." ++ atom_to_list(Suite) ++ GroupSpecName,
     TestName = get_name(TestDir) ++ "." ++ atom_to_list(Suite) ++ GroupName,
-    % io:fwrite("TestSpecName: ~p~nTestDirName: ~p~n", [TestSpecName, TestName]),
     case maybe_interpret(Suite, init_per_group, Opts) of
 	ok ->
 	    case catch test_server_ctrl:add_conf_with_skip(TestName,
@@ -2575,9 +2569,7 @@ add_jobs([{TestDir,Suite,Cases}|Tests],
     case maybe_interpret(Suite, Cases1, Opts) of
 	ok ->
 	    Name =  get_name(TestDir) ++ "." ++ atom_to_list(Suite) ++ ".cases",
-        % io:fwrite("Starting to get SpecName for cases~n"),
         SpecName = get_name(TestDir) ++ "." ++ atom_to_list(Suite) ++ "." ++ get_spec_name(Cases1),
-        % io:fwrite("Retrieved SpecName: ~p for cases~n", [SpecName]),
 	    case catch test_server_ctrl:add_cases_with_skip(Name, SpecName, Suite, Cases1,
 							    skiplist(TestDir,
 								     Skip)) of
