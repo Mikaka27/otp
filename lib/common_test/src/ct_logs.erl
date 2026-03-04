@@ -2915,7 +2915,7 @@ make_all_suites_index3([{{TestName,TestSpecName},[LastLogDir|OldDirs]}|Rest],
 				   TotNotBuilt+NotBuilt, Labels1,
 				   [IxEntry|TempData]);
 	error ->
-	    IxEntry = {TestName,Label,Missing,
+	    IxEntry = {TestName,TestSpecName,Label,Missing,
 		       {LastLogDir,error,undefined},OldDirs},
 	    make_all_suites_index3(Rest, Result, TotSucc, TotFail, 
 				   UserSkip, AutoSkip, TotNotBuilt, Labels1,
@@ -3551,6 +3551,7 @@ get_spec_name(Dir, Default) ->
                     put_spec_name_to_cache(Dir, SpecName),
                     SpecName;
                 {error, _Reason} ->
+                    put_spec_name_to_cache(Dir, Default),
                     Default
             end;
         SpecName ->
@@ -3564,8 +3565,6 @@ get_spec_name_from_cache(Dir) ->
             maps:get(Dir, Cache, undefined)
     end.
 
-put_spec_name_to_cache(_Dir, undefined) ->
-    ok;
 put_spec_name_to_cache(Dir, SpecName) ->
     Cache0 =
     case get(ct_spec_name_cache) of
