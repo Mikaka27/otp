@@ -82,6 +82,14 @@
 -define(expected_summary_size, 5).
 -define(minimum_summary_size, 3).
 
+-define(equal_test(__TestName, __SpecName),
+    fun(Test) -> __TestName =:= element(1, Test) andalso __SpecName =:= element(2, Test) end
+).
+
+-define(not_equal_test(__TestName, __SpecName),
+    fun(Test) -> __TestName /= element(1, Test) orelse __SpecName /= element(2, Test) end
+).
+
 -record(log_cache, {version,
 		    all_runs = [],
 		    tests = []}).
@@ -2546,7 +2554,7 @@ make_all_suites_index(When, CustomStylesheet) when is_atom(When) ->
 make_all_suites_index(NewTestData = {_TestName,DirName}, CustomStylesheet) ->    
     put(basic_html, basic_html()),
 
-    %% AllLogDirs = [{TestName,Label,Missing,
+    %% AllLogDirs = [{TestName,SpecName,Label,Missing,
     %%                {LastLogDir,Summary,URIs},OldDirs}|...]
 
     {AbsIndexName,LogDirData} = ct_util:get_testdata(test_index),
@@ -2597,10 +2605,13 @@ make_all_suites_index_from_cache(When, AbsIndexName, LogDirs, LogCache, CustomSt
     %% 
 
     {NewAdded,OldTests} = dir_diff_tests(LogDirs,LogCache),
+    ct:pal("NewAdded: ~p~nOldTests: ~p~n", [NewAdded, OldTests]),
     
     LogCache1 = delete_tests_from_cache(OldTests,LogCache),
+    ct:pal("LogCache1: ~p~n", [LogCache1]),
     Sorted = sort_and_filter_logdirs(NewAdded,
 				     LogCache1#log_cache.tests),
+    ct:pal("Sorted: ~p~n", [Sorted]),
     TempData =
 	if Sorted /= [] ->
 		make_all_suites_index1(When,AbsIndexName,
@@ -2625,10 +2636,11 @@ sort_and_filter_logdirs(NewDirs,_CachedTests) ->
     sort_and_filter_logdirs(NewDirs).
 
 %% sort latest dirs found and combine them with cached entries
-sort_and_filter_logdirs([{TestName,IxDirs}|Tests],CachedTests,Combined) ->
-    case lists:keysearch(TestName,1,CachedTests) of
-	{value,{TestName,_,_,{IxDir0,_,_},IxDirs0}} ->
+sort_and_filter_logdirs([{TestName,SpecName,IxDirs}|Tests],CachedTests,Combined) ->
+    case lists:search(?equal_test(TestName, SpecName), CachedTests) of
+	{value,{TestName,SpecName,_,_,{IxDir0,_,_},IxDirs0}} ->
 	    Groups = sort_and_filter_logdirs2(TestName,
+					      SpecName,
 					      IxDirs++[IxDir0|IxDirs0],
 					      []),
 	    sort_and_filter_logdirs(Tests,CachedTests,Groups++Combined);
@@ -2639,11 +2651,11 @@ sort_and_filter_logdirs([{TestName,IxDirs}|Tests],CachedTests,Combined) ->
 					{filename:basename(RunDir),RunDir}
 				end, IxDirs),
 	    sort_and_filter_logdirs(Tests,CachedTests,
-				    [{TestName,IxDirs1}|Combined])
+				    [{TestName,SpecName,IxDirs1}|Combined])
     end;
 sort_and_filter_logdirs([],CachedTests,Combined) ->
-    Cached1 = lists:foldl(fun({TestName,_},Cached) ->
-				  lists:keydelete(TestName,1,Cached)
+    Cached1 = lists:foldl(fun({TestName,SpecName,_},Cached) ->
+				  lists:filter(?not_equal_test(TestName, SpecName), Cached)
 			  end, CachedTests, Combined),
     lists:keysort(1,sort_each_group(Combined)++Cached1).
 
@@ -2655,7 +2667,8 @@ sort_and_filter_logdirs1([Dir|Dirs],Groups) ->
     TestName = filename:rootname(filename:basename(Dir)),
     case filelib:wildcard(filename:join(Dir,"run.*")) of
 	RunDirs = [_|_] ->
-	    Groups1 = sort_and_filter_logdirs2(TestName,RunDirs,Groups),
+        SpecName = get_spec_name(Dir, TestName),
+	    Groups1 = sort_and_filter_logdirs2(TestName,SpecName,RunDirs,Groups),
 	    sort_and_filter_logdirs1(Dirs,Groups1);
 	_ ->					% ignore missing run directory
 	    sort_and_filter_logdirs1(Dirs,Groups)
@@ -2663,26 +2676,25 @@ sort_and_filter_logdirs1([Dir|Dirs],Groups) ->
 sort_and_filter_logdirs1([],Groups) ->
     lists:keysort(1,sort_each_group(Groups)).
 
-sort_and_filter_logdirs2(TestName,[RunDir|RunDirs],Groups) ->
-    TestSpecName = get_spec_name(RunDir, TestName),
-    Groups1 = insert_test({TestName, TestSpecName},{filename:basename(RunDir),RunDir},Groups),
-    sort_and_filter_logdirs2(TestName,RunDirs,Groups1);
-sort_and_filter_logdirs2(_,[],Groups) ->
+sort_and_filter_logdirs2(TestName,SpecName,[RunDir|RunDirs],Groups) ->
+    Groups1 = insert_test(TestName, SpecName,{filename:basename(RunDir),RunDir},Groups),
+    sort_and_filter_logdirs2(TestName,SpecName,RunDirs,Groups1);
+sort_and_filter_logdirs2(_,_,[],Groups) ->
     Groups.
 
 %% new rundir for Test found, add to (not sorted) list of prev rundirs
-insert_test(Test,IxDir,[{Test,IxDirs}|Groups]) ->
-    [{Test,[IxDir|IxDirs]}|Groups];
+insert_test(Test,SpecName,IxDir,[{Test,SpecName,IxDirs}|Groups]) ->
+    [{Test,SpecName,[IxDir|IxDirs]}|Groups];
 %% first occurrence of Test
-insert_test(Test,IxDir,[]) ->
-    [{Test,[IxDir]}];
-insert_test(Test,IxDir,[TestDir|Groups]) ->
-    [TestDir|insert_test(Test,IxDir,Groups)].
+insert_test(Test,SpecName,IxDir,[]) ->
+    [{Test,SpecName,[IxDir]}];
+insert_test(Test,SpecName,IxDir,[TestDir|Groups]) ->
+    [TestDir|insert_test(Test,SpecName,IxDir,Groups)].
 
 %% sort the list of rundirs for each Test
-sort_each_group([{Test,IxDirs}|Groups]) ->
+sort_each_group([{Test,SpecName,IxDirs}|Groups]) ->
     Sorted = lists:reverse([Dir || {_,Dir} <- lists:keysort(1,IxDirs)]),
-    [{Test,Sorted}|sort_each_group(Groups)];
+    [{Test,SpecName,Sorted}|sort_each_group(Groups)];
 sort_each_group([]) ->
     [].
 
@@ -2697,11 +2709,10 @@ dir_diff_tests([LogDir|LogDirs], CachedTests, NewAdded, DeletedTests,
     SpecName = get_spec_name(LogDir, TestName),
     Pair = {TestName, SpecName},
     Time = datestr_from_dirname(LogDir),
-    F = fun({TN, SN, _, _, _, _}) -> TestName =:= TN andalso SpecName =:= SN end,
     %% check if the test already exists in the cache
     {New,DeletedTests1,ValidLast1,InvalidLast1} =
-	case lists:search(F, CachedTests) of
-	    {value,{_,_,_,_,{LastLogDir,_,_},_PrevLogDirs}} ->
+	case lists:search(?equal_test(TestName, SpecName), CachedTests) of
+	    {value,{TestName,SpecName,_,_,{LastLogDir,_,_},_PrevLogDirs}} ->
 		LastLogTime = datestr_from_dirname(LastLogDir),
 		if Time > LastLogTime ->
 			%% this is a new test run, not in cache
@@ -2758,7 +2769,7 @@ dir_diff_tests([], _CachedTests, NewAdded, DeletedTests,
 
 delete_tests_from_cache(OldTests, LogCache=#log_cache{tests=Tests}) ->
     Tests2 = lists:foldl(fun({T, S},Tests1) ->
-				 lists:filter(fun({TN, SN, _, _, _, _}) -> T /= TN orelse S /= SN end, Tests1)
+				 lists:filter(?not_equal_test(T, S), Tests1)
 			 end, Tests, OldTests),
     LogCache#log_cache{tests = Tests2}.
 
@@ -2777,7 +2788,7 @@ update_tests_in_cache(TempData,LogCache=#log_cache{tests=Tests}) ->
 		[];
 	   true ->
 		lists:foldl(fun({TestName,SpecName,_,_,_,_},Cached) ->
-				    lists:filter(fun({TN, SN, _, _, _, _}) -> TestName /= TN orelse SpecName /= SN end, Cached)
+				    lists:filter(?not_equal_test(TestName, SpecName), Cached)
 			    end, Tests, TempData)
 	end,
     Tests1 = lists:keysort(1,TempData++Cached1),
@@ -2874,7 +2885,7 @@ make_all_suites_index3([IxEntry = {TestName,TestSpecName,Label,Missing,
     end;
 
 %% this clause is for handling non-cached directories
-make_all_suites_index3([{{TestName,TestSpecName},[LastLogDir|OldDirs]}|Rest],
+make_all_suites_index3([{TestName,TestSpecName,[LastLogDir|OldDirs]}|Rest],
 		       Result, TotSucc, TotFail, UserSkip, AutoSkip, TotNotBuilt,
 		       Labels, TempData) ->
     [EntryDir|_] = filename:split(LastLogDir),
