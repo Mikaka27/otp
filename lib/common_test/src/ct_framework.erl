@@ -1425,7 +1425,8 @@ report(What,Data) ->
 	    %% top level test index page needs to be refreshed
 	    TestName = filename:basename(?val(topdir, Data), ".logs"),
 	    RunDir = ?val(rundir, Data),
-	    _ = ct_logs:make_all_suites_index({TestName,RunDir},unknown),
+	    SpecName = ?val(spec_name, Data, TestName),
+	    _ = ct_logs:make_all_suites_index({TestName,SpecName,RunDir},unknown),
 	    ok;
 	tests_start ->
 	    ok;

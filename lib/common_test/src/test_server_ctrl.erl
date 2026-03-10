@@ -1740,9 +1740,19 @@ start_log_file() ->
     ok = file:make_dir(PrivDir),
     put(test_server_priv_dir,PrivDir++"/"),
     print_timestamp(major, "Suite started at "),
-    print(major, "=spec_name  ~ts", [get(test_server_spec_name)]),
+    TestName = get(test_server_name),
+    SpecName =
+    case get(test_server_spec_name) of
+        undefined ->
+            TestName;
+        Other ->
+            Other
+    end,
+    print(major, "=spec_name  ~ts", [SpecName]),
 
-    LogInfo = [{topdir,Dir},{rundir,lists:flatten(TestDir1)}],
+    LogInfo = [{topdir,Dir},
+               {rundir,lists:flatten(TestDir1)},
+               {spec_name,SpecName}],
     test_server_sup:framework_call(report, [loginfo,LogInfo]),
     {ok,TestDir1}.
 

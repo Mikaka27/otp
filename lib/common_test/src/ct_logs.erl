@@ -2551,7 +2551,7 @@ make_all_suites_index(When, CustomStylesheet) when is_atom(When) ->
 		
 %% This updates the top level index file using data from the initial
 %% index file creation, saved temporarily in a table.
-make_all_suites_index(NewTestData = {_TestName,DirName}, CustomStylesheet) ->    
+make_all_suites_index(NewTestData = {_TestName,_SpecName,DirName}, CustomStylesheet) ->    
     put(basic_html, basic_html()),
 
     %% AllLogDirs = [{TestName,SpecName,Label,Missing,
@@ -2605,13 +2605,10 @@ make_all_suites_index_from_cache(When, AbsIndexName, LogDirs, LogCache, CustomSt
     %% 
 
     {NewAdded,OldTests} = dir_diff_tests(LogDirs,LogCache),
-    ct:pal("NewAdded: ~p~nOldTests: ~p~n", [NewAdded, OldTests]),
     
     LogCache1 = delete_tests_from_cache(OldTests,LogCache),
-    ct:pal("LogCache1: ~p~n", [LogCache1]),
     Sorted = sort_and_filter_logdirs(NewAdded,
 				     LogCache1#log_cache.tests),
-    ct:pal("Sorted: ~p~n", [Sorted]),
     TempData =
 	if Sorted /= [] ->
 		make_all_suites_index1(When,AbsIndexName,
@@ -2955,15 +2952,15 @@ make_all_suites_ix_temp(AbsIndexName, NewTestData, Label, AllTestLogDirs, Custom
 	    {error,{index_write_error, Reason}}
     end.
 
-insert_new_test_data({NewTestName,NewTestDir}, NewLabel, AllTestLogDirs) ->
+insert_new_test_data({NewTestName,NewSpecName,NewTestDir}, NewLabel, AllTestLogDirs) ->
     AllTestLogDirs1 =
-	case lists:keysearch(NewTestName, 1, AllTestLogDirs) of
-	    {value,{_,_,_,{LastLogDir,_,_},OldDirs}} ->
-		[{NewTestName,NewLabel,[],{NewTestDir,{0,0,0,0},undefined},
+	case lists:search(?equal_test(NewTestName, NewSpecName), AllTestLogDirs) of
+	    {value,{_,_,_,_,{LastLogDir,_,_},OldDirs}} ->
+		[{NewTestName,NewSpecName,NewLabel,[],{NewTestDir,{0,0,0,0},undefined},
 		  [LastLogDir|OldDirs]} |
-		 lists:keydelete(NewTestName, 1, AllTestLogDirs)];
+		 lists:filter(?not_equal_test(NewTestName, NewSpecName), AllTestLogDirs)];
 	    false ->
-		[{NewTestName,NewLabel,[],{NewTestDir,{0,0,0,0},undefined},[]} |
+		[{NewTestName,NewSpecName,NewLabel,[],{NewTestDir,{0,0,0,0},undefined},[]} |
 		 AllTestLogDirs]
 	end,
     lists:keysort(1, AllTestLogDirs1).
