@@ -2637,7 +2637,6 @@ sort_and_filter_logdirs([{TestName,SpecName,IxDirs}|Tests],CachedTests,Combined)
     case lists:search(?equal_test(TestName, SpecName), CachedTests) of
 	{value,{TestName,SpecName,_,_,{IxDir0,_,_},IxDirs0}} ->
 	    Groups = sort_and_filter_logdirs2(TestName,
-					      SpecName,
 					      IxDirs++[IxDir0|IxDirs0],
 					      []),
 	    sort_and_filter_logdirs(Tests,CachedTests,Groups++Combined);
@@ -2664,8 +2663,7 @@ sort_and_filter_logdirs1([Dir|Dirs],Groups) ->
     TestName = filename:rootname(filename:basename(Dir)),
     case filelib:wildcard(filename:join(Dir,"run.*")) of
 	RunDirs = [_|_] ->
-        SpecName = get_spec_name(Dir, TestName),
-	    Groups1 = sort_and_filter_logdirs2(TestName,SpecName,RunDirs,Groups),
+	    Groups1 = sort_and_filter_logdirs2(TestName,RunDirs,Groups),
 	    sort_and_filter_logdirs1(Dirs,Groups1);
 	_ ->					% ignore missing run directory
 	    sort_and_filter_logdirs1(Dirs,Groups)
@@ -2673,10 +2671,11 @@ sort_and_filter_logdirs1([Dir|Dirs],Groups) ->
 sort_and_filter_logdirs1([],Groups) ->
     lists:keysort(1,sort_each_group(Groups)).
 
-sort_and_filter_logdirs2(TestName,SpecName,[RunDir|RunDirs],Groups) ->
+sort_and_filter_logdirs2(TestName,[RunDir|RunDirs],Groups) ->
+    SpecName = get_spec_name(RunDir, TestName),
     Groups1 = insert_test(TestName, SpecName,{filename:basename(RunDir),RunDir},Groups),
-    sort_and_filter_logdirs2(TestName,SpecName,RunDirs,Groups1);
-sort_and_filter_logdirs2(_,_,[],Groups) ->
+    sort_and_filter_logdirs2(TestName,RunDirs,Groups1);
+sort_and_filter_logdirs2(_,[],Groups) ->
     Groups.
 
 %% new rundir for Test found, add to (not sorted) list of prev rundirs
