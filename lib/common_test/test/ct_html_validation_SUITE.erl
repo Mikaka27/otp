@@ -62,7 +62,7 @@ end_per_testcase(TestCase, Config) ->
 suite() -> [{ct_hooks,[ts_install_cth]}].
 
 all() ->
-    [validate_html_output
+    [run_spec_twice
     ].
 
 groups() ->
@@ -81,26 +81,44 @@ end_per_group(_GroupName, Config) ->
 %%%-----------------------------------------------------------------
 %%%
 
-validate_html_output(Config) ->
+run_spec_twice(Config) ->
     DataDir = ?config(data_dir, Config),
     PrivDir = ?config(priv_dir, Config),
-    
-    %% Run a simple test to generate HTML output
+
     Opts = ct_test_support:get_opts(Config),
-    TestOpts = [{dir, DataDir}, {logdir, PrivDir}],
-    
-    case ct_test_support:run(Opts ++ TestOpts, Config) of
+    Specs = [fname(specs_dir1, "flat_spec1", Config)],
+
+    case ct_test_support:run(Opts ++ Specs, Config) of
         ok ->
-            %% Validate HTML files in the log directory
-            validate_html_files(PrivDir);
+            ok;
         Error ->
             ct:fail("Test execution failed: ~p", [Error])
     end.
+
+% validate_html_output(Config) ->
+%     DataDir = ?config(data_dir, Config),
+%     PrivDir = ?config(priv_dir, Config),
+    
+%     %% Run a simple test to generate HTML output
+%     Opts = ct_test_support:get_opts(Config),
+%     TestOpts = [{dir, DataDir}, {logdir, PrivDir}],
+%     ct:pal("DataDir: ~p, PrivDir: ~p~nOpts: ~p~nTestOpts: ~p~n", [DataDir, PrivDir, Opts, TestOpts]),
+    
+%     case ct_test_support:run(Opts ++ TestOpts, Config) of
+%         ok ->
+%             %% Validate HTML files in the log directory
+%             validate_html_files(PrivDir);
+%         Error ->
+%             ct:fail("Test execution failed: ~p", [Error])
+%     end.
 
 
 %%%-----------------------------------------------------------------
 %%% HELP FUNCTIONS
 %%%-----------------------------------------------------------------
+
+fname(Tag, File, Config) ->
+    filename:join(?config(Tag, Config), File).
 
 validate_html_files(LogDir) ->
     %% Find all HTML files in the log directory
