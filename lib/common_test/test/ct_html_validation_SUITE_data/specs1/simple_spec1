@@ -1,0 +1,2 @@
+{config, "../config1/cfg11"}.
+{suites, "../tests1", t11_SUITE}.

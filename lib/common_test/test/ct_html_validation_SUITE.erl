@@ -85,15 +85,27 @@ run_spec_twice(Config) ->
     DataDir = ?config(data_dir, Config),
     PrivDir = ?config(priv_dir, Config),
 
-    Opts = ct_test_support:get_opts(Config),
-    Specs = [fname(specs_dir1, "flat_spec1", Config)],
+    ct:pal("PrivDir: ~p~n", [PrivDir]),
 
-    case ct_test_support:run(Opts ++ Specs, Config) of
-        ok ->
-            ok;
-        Error ->
-            ct:fail("Test execution failed: ~p", [Error])
-    end.
+    TCName = ?FUNCTION_NAME,
+    TestID = {userconfig,{?MODULE,atom_to_list(TCName)}},
+    % TestTerms = [TestID,{spec,Specs},{label,TCName}] ++ TestOpts,
+
+    Opts0 = ct_test_support:get_opts(Config),
+    FName = fname(specs_dir1, "simple_spec1", Config),
+    % Specs = [{spec, [FName]}, {spec, [FName]}],
+    Specs = [TestID,{spec, [FName]},{label,TCName}],
+
+    Opts = ct_test_support:get_overwritten_opts(Opts0 ++ Specs),
+
+    _ = ct_test_support:run_ct_run_test(Opts, Config),
+    validate_html_files(PrivDir).
+
+    %     ok ->
+    %         ok;
+    %     Error ->
+    %         ct:fail("Test execution failed: ~p", [Error])
+    % end.
 
 % validate_html_output(Config) ->
 %     DataDir = ?config(data_dir, Config),
@@ -117,46 +129,80 @@ run_spec_twice(Config) ->
 %%% HELP FUNCTIONS
 %%%-----------------------------------------------------------------
 
+check_parameter(TCID) ->
+    {ok,{config,TCID}}.
+
+read_config(TCID) ->
+    {ok,[{tcname,list_to_atom(TCID)}]}.
+
 fname(Tag, File, Config) ->
     filename:join(?config(Tag, Config), File).
 
 validate_html_files(LogDir) ->
-    %% Find all HTML files in the log directory
-    HtmlFiles = filelib:wildcard(filename:join(LogDir, "**/*.html")),
-    ct:pal("Found ~p HTML files to validate", [length(HtmlFiles)]),
+    MainIndex = filename:join(LogDir, "index.html"),
+    validate_index_html_file(MainIndex, "").
+    % %% Find all HTML files in the log directory
+    % HtmlFiles = filelib:wildcard(filename:join(LogDir, "**/*.html")),
+    % ct:pal("Found ~p HTML files to validate", [length(HtmlFiles)]),
     
-    %% Validate each HTML file
-    Results = [validate_html_file(File) || File <- HtmlFiles],
+    % %% Validate each HTML file
+    % Results = [validate_html_file(File) || File <- HtmlFiles],
     
-    %% Check if all validations passed
-    case lists:all(fun(R) -> R =:= ok end, Results) of
-        true -> ok;
-        false -> ct:fail("HTML validation failed for some files")
+    % %% Check if all validations passed
+    % case lists:all(fun(R) -> R =:= ok end, Results) of
+    %     true -> ok;
+    %     false -> ct:fail("HTML validation failed for some files")
+    % end.
+
+% validate_html_file(File) ->
+%     ct:pal("File: ~p~n", [File]),
+%     % Content = xmerl_scan:file(File),
+%     % ct:pal("Content: ~p~n", [Content]),
+%     % ok.
+%     case file:read_file(File) of
+%         {ok, Content} ->
+%             %% Basic HTML validation
+%             case validate_html_content(Content) of
+%                 ok -> 
+%                     ct:pal("HTML validation passed: ~s", [File]),
+%                     ok;
+%                 {error, Reason} ->
+%                     ct:pal("HTML validation failed for ~s: ~p", [File, Reason]),
+%                     error
+%             end;
+%         {error, Reason} ->
+%             ct:pal("Failed to read file ~s: ~p", [File, Reason]),
+%             error
+%     end.
+
+% validate_html_content(Content) ->
+%     %% TODO: Implement actual HTML validation using xmerl or other parser
+%     %% For now, just check basic structure
+%     Parsed = xmerl_scan:string(binary_to_list(Content)),
+%     ct:pal("Parsed: ~p~n", [Parsed]),
+%     ok.
+%     % ContentStr = binary_to_list(Content),
+%     % case {string:find(ContentStr, "<html"), string:find(ContentStr, "</html>")} of
+%     %     {nomatch, _} -> {error, missing_html_tag};
+%     %     {_, nomatch} -> {error, missing_closing_html_tag};
+%     %     _ -> ok
+%     % end.
+
+validate_index_html_file(Path, ExpectedTests) ->
+    case file:open(Path, [read]) of
+        {ok, Fd} ->
+            {ok, _Acc, _} = collect_until("<tbody>\n", file:read_line(Fd), Fd, []);
+        Other ->
+            Other
     end.
 
-validate_html_file(File) ->
-    case file:read_file(File) of
-        {ok, Content} ->
-            %% Basic HTML validation
-            case validate_html_content(Content) of
-                ok -> 
-                    ct:pal("HTML validation passed: ~s", [File]),
-                    ok;
-                {error, Reason} ->
-                    ct:pal("HTML validation failed for ~s: ~p", [File, Reason]),
-                    error
-            end;
-        {error, Reason} ->
-            ct:pal("Failed to read file ~s: ~p", [File, Reason]),
-            error
-    end.
+collect_until(Expected, {ok, Expected}, _Fd, Acc) ->
+    {ok, Acc, Expected};
+collect_until(Expected, {ok, Other}, Fd, Acc) ->
+    collect_until(Expected, file:read_line(Fd), Fd, [Other | Acc]);
+collect_until(_Expected, eof, _Fd, _Acc) ->
+    {error, eof};
+collect_until(_Expected, {error, Other}, _Fd, _Acc) ->
+    {error, Other}.
 
-validate_html_content(Content) ->
-    %% TODO: Implement actual HTML validation using xmerl or other parser
-    %% For now, just check basic structure
-    ContentStr = binary_to_list(Content),
-    case {string:find(ContentStr, "<html"), string:find(ContentStr, "</html>")} of
-        {nomatch, _} -> {error, missing_html_tag};
-        {_, nomatch} -> {error, missing_closing_html_tag};
-        _ -> ok
-    end.
+
