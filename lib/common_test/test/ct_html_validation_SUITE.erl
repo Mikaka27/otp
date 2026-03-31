@@ -34,9 +34,11 @@
 
 -include_lib("common_test/include/ct.hrl").
 
+-define(NEXT_COL(Text), string:find(Text, "<td>")).
+
 -record(test, {
     test_name :: string(),
-    suite_log_link :: string() | undefined,
+    suite_log_link :: string(),
     label :: atom() | undefined,
     start_date :: calendar:datetime(),
     ok :: non_neg_integer(),
@@ -48,6 +50,19 @@
     node :: node(),
     ct_log_link :: string(),
     old_runs_link :: string() | link | undefined
+}).
+
+-record(test_case, {
+    num :: pos_integer() | undefined,
+    module :: module(),
+    group :: atom() | undefined,
+    tc :: atom(),
+    tc_link :: string(),
+    top_log :: string(),
+    end_log :: string(),
+    time :: non_neg_integer(),
+    result :: string(),
+    comment :: string() | undefined
 }).
 
 %%--------------------------------------------------------------------
@@ -97,9 +112,11 @@ end_per_group(_GroupName, Config) ->
 %%%
 
 run_spec_twice(Config) ->
-    Specs = specs(?FUNCTION_NAME),
+    Specs0 = specs(?FUNCTION_NAME),
+    Specs1 = lists:append(Specs0, Specs0),
+    Specs = [fname(specs_dir, Spec,Config) || Spec <- Specs1],
 
-    setup_and_execute(?FUNCTION_NAME, specs(?FUNCTION_NAME), [], Config),
+    setup_and_execute(?FUNCTION_NAME, Specs, [], Config).
 
     % DataDir = ?config(data_dir, Config),
     % PrivDir = ?config(priv_dir, Config),
@@ -182,7 +199,7 @@ get_default_expected(Config) ->
     #test{start_date = calendar:local_time(),
           node = ?config(ct_node, Config)}.
 
-expected(tests1_spec, Label, Config) ->
+expected(Label, Config) ->
     Test = get_default_expected(Config),
     [Test#test{test_name = ?config(data_dir, Config) ++ ".tests1",
               label = Label,
@@ -206,12 +223,13 @@ setup_and_execute(TCName, Specs, TestOpts, Config) ->
     Opts0 = ct_test_support:get_opts(Config),
     Opts = ct_test_support:get_overwritten_opts(Opts0 ++ TestTerms),
 
-    ct_test_support:run_ct_run_test(Opts, Config).
+    ct_test_support:run_ct_run_test(Opts, Config),
 
-validate_html_files(LogDir) ->
-    MainIndex = filename:join(LogDir, "index.html"),
+    validate_html_files(Config, expected(TCName, Config)).
+
+validate_html_files(Config, ExpectedTests) ->
     % Expected = #test{test_name = }
-    validate_index_html_file(MainIndex, []).
+    validate_index_html_file(Config, ExpectedTests).
     % %% Find all HTML files in the log directory
     % HtmlFiles = filelib:wildcard(filename:join(LogDir, "**/*.html")),
     % ct:pal("Found ~p HTML files to validate", [length(HtmlFiles)]),
@@ -259,17 +277,38 @@ validate_html_files(LogDir) ->
 %     %     _ -> ok
 %     % end.
 
-validate_index_html_file(Path, ExpectedTests) ->
-    case file:open(Path, [read]) of
-        {ok, Fd} ->
-            {ok, _} = collect_until("<tbody>\n", file:read_line(Fd), Fd, []),
-            {ok, Result} = collect_until("</tbody>\n", file:read_line(Fd), Fd, []),
-            ct:pal("Result: ~p~n", [Result]),
-            Tests = parse_tests(Result, []),
-            ct:pal("Tests: ~p~n", [Tests]),
-            Tests;
-        Other ->
-            Other
+validate_index_html_file(Config, ExpectedTests) ->
+    PrivDir = ?config(priv_dir, Config),
+    Path = filename:join(PrivDir, "index.html"),
+    {ok, Fd} = file:open(Path, [read]),
+    try
+        {ok, _} = collect_until("<tbody>\n", file:read_line(Fd), Fd, []),
+        {ok, Result} = collect_until("</tbody>\n", file:read_line(Fd), Fd, []),
+        ct:pal("Result: ~p~n", [Result]),
+        Tests = parse_tests(Result, []),
+        ct:pal("Tests: ~p~n", [Tests]),
+        lists:foreach(fun(#test{suite_log_link = Link}) ->
+            validate_suite_log_file(Config, Link, [])
+        end, Tests)
+    after
+        file:close(Fd)
+    end.
+
+validate_suite_log_file(Config, Link, ExpectedCases) ->
+    PrivDir = ?config(priv_dir, Config),
+    Path = filename:join(PrivDir, Link),
+    {ok, Fd} = file:open(Path, [read]),
+    try
+        {ok, _} = collect_until("<tbody>\n", file:read_line(Fd), Fd, []),
+        {ok, Result} = collect_until("</tbody>\n", file:read_line(Fd), Fd, []),
+        ct:pal("Result: ~p~n", [Result]),
+        Cases = lists:filtermap(fun("\n") -> false;
+                                   (Line) -> {true, parse_test_case(Line, 1, #test_case{})}
+                                end, Result),
+        ct:pal("Cases: ~p~n", [Cases]),
+        Cases
+    after
+        file:close(Fd)
     end.
 
 collect_until(Expected, {ok, Expected}, _Fd, Acc) ->
@@ -285,15 +324,14 @@ parse_tests([], Tests) ->
     lists:reverse(Tests);
 parse_tests(["<tr class=" ++ _ | Rest], Tests) ->
     parse_tests(Rest, [#test{} | Tests]);
-parse_tests(["<td><a href=\"" ++ Line0 | Rest], [Test | Tests]) ->
+parse_tests(["<td><a href=\"" ++ Line0 | Rest], [#test{test_name = undefined} = Test | Tests]) ->
     [Link, Line1] = string:split(Line0, "\">"),
     [Name, _] = string:split(Line1, "<"),
-    case string:split(Line1, "<") of
-        ["CT Log", _] ->
-            parse_tests(Rest, [Test#test{ct_log_link = Link} | Tests]);
-        [Name, _] ->
-            parse_tests(Rest, [Test#test{test_name = Name, suite_log_link = Link} | Tests])
-    end;
+    parse_tests(Rest, [Test#test{test_name = Name, suite_log_link = Link} | Tests]);
+parse_tests(["<td><a href=\"" ++ Line0 | Rest], [#test{ct_log_link = undefined} = Test | Tests]) ->
+    [Link, Line1] = string:split(Line0, "\">"),
+    ["CT Log", _] = string:split(Line1, "<"),
+    parse_tests(Rest, [Test#test{ct_log_link = Link} | Tests]);
 parse_tests(["<td align=center><b>" ++ Line | Rest], [Test | Tests]) ->
     [Label, _] = string:split(Line, "<"),
     parse_tests(Rest, [Test#test{label = list_to_atom(Label)} | Tests]);
@@ -325,10 +363,59 @@ parse_tests(["<td align=right>" ++ Line | Rest], [#test{missing_suites = undefin
 parse_tests(["<td align=right>" ++ Line | Rest], [#test{node = undefined} = Test | Tests]) ->
     [Node, _] = string:split(Line, "<"),
     parse_tests(Rest, [Test#test{node = list_to_atom(Node)} | Tests]);
+parse_tests(["<td><a href=\"" ++ Line0 | Rest], [#test{old_runs_link = undefined} = Test | Tests]) ->
+    [Link, Line1] = string:split(Line0, "\">"),
+    ["Old Runs", _] = string:split(Line1, "<"),
+    parse_tests(Rest, [Test#test{old_runs_link = Link} | Tests]);
 parse_tests(["<td>none</td>\n" | Rest], [#test{old_runs_link = undefined} = Test | Tests]) ->
     parse_tests(Rest, [Test | Tests]);
 parse_tests(["</tr>\n" | Rest], Tests) ->
     parse_tests(Rest, Tests).
+
+parse_test_case(nomatch, _, Case) ->
+    Case;
+parse_test_case("<tr class=" ++ Rest, Col, Case) ->
+    parse_test_case(?NEXT_COL(Rest), Col, Case);
+parse_test_case("<td><font color=\"black\">" ++ Rest0, 1 = Col, Case) ->
+    case string:take(Rest0, lists:seq($0, $9)) of
+        {[], Rest} ->
+            parse_test_case(?NEXT_COL(Rest), Col + 1, Case);
+        {Num, Rest} ->
+            parse_test_case(?NEXT_COL(Rest), Col + 1, Case#test_case{num = list_to_integer(Num)})
+    end;
+parse_test_case("<td><font color=\"black\">" ++ Rest0, 2 = Col, Case) ->
+    [Mod, Rest] = string:split(Rest0, "<"),
+    parse_test_case(string:find(Rest, "<td>"), Col + 1, Case#test_case{module = Mod});
+parse_test_case("<td><font color=\"black\">" ++ Rest0, 3 = Col, Case) ->
+    case string:split(Rest0, "<") of
+        [[], Rest] ->
+            parse_test_case(?NEXT_COL(Rest), Col + 1, Case);
+        [Group, Rest] ->
+            parse_test_case(?NEXT_COL(Rest), Col + 1, Case#test_case{group = Group})
+    end;
+parse_test_case("<td><a href=\"" ++ Rest0, 4 = Col, Case) ->
+    [Link, Rest1] = string:split(Rest0, "\">"),
+    [Name, Rest] = string:split(Rest1, "<"),
+    parse_test_case(?NEXT_COL(Rest), Col + 1, Case#test_case{tc = Name, tc_link = Link});
+parse_test_case("<td><a href=\"" ++ Rest0, 5 = Col, Case) ->
+    [Link1, Rest1] = string:split(Rest0, "\">"),
+    "<a href=\"" ++ Rest2 = string:find(Rest1, "<a href=\""),
+    [Link2, Rest] = string:split(Rest2, "\">"),
+    parse_test_case(?NEXT_COL(Rest), Col + 1, Case#test_case{top_log = Link1, end_log = Link2});
+parse_test_case("<td><font color=\"black\">" ++ Rest0, 6 = Col, Case) ->
+    [Time, Rest] = string:split(Rest0, "<"),
+    parse_test_case(?NEXT_COL(Rest), Col + 1, Case#test_case{time = Time});
+parse_test_case("<td><font color=" ++ Rest0, 7 = Col, Case) ->
+    [_, Rest1] = string:split(Rest0, ">"),
+    [Result, Rest] = string:split(Rest1, "<"),
+    parse_test_case(?NEXT_COL(Rest), Col + 1, Case#test_case{result = Result});
+parse_test_case("<td>" ++ Rest0, 8 = Col, Case) ->
+    case string:split(Rest0, "</td>") of
+        [[], Rest] ->
+            parse_test_case(?NEXT_COL(Rest), Col + 1, Case);
+        [Comment, Rest] ->
+            parse_test_case(?NEXT_COL(Rest), Col + 1, Case#test_case{comment = Comment})
+    end.
 
 month_name_to_number("Jan") -> 1;
 month_name_to_number("Feb") -> 2;
