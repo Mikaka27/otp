@@ -24,6 +24,8 @@ end_per_suite(_Config) ->
 init_per_group(_Group, Config) ->
     Config.
 
+end_per_group(subgroup2a, _Config) ->
+    ct:fail("end_per_group subgroup2a failure");
 end_per_group(_Group, _Config) ->
     ok.
 

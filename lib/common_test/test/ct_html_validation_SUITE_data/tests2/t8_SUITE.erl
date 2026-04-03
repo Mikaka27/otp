@@ -27,6 +27,8 @@ init_per_group(_Group, Config) ->
 end_per_group(_Group, _Config) ->
     ok.
 
+init_per_testcase(test1a, _Config) ->
+    ct:fail("init_per_testcase test1a failure");
 init_per_testcase(_TestCase, Config) ->
     Config.
 
@@ -37,7 +39,7 @@ test1a(_Config) -> ok.
 test1b(_Config) -> ok.
 test1c(_Config) -> ok.
 test1d(_Config) -> ok.
-test2a(_Config) -> ok.
+test2a(_Config) -> error(test2a_crash).
 test2b(_Config) -> ok.
 test2c(_Config) -> ok.
 test2d(_Config) -> ok.

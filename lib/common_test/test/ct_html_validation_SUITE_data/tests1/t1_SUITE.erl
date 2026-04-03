@@ -31,6 +31,10 @@ init_per_group(_Group, Config) ->
 end_per_group(_Group, _Config) ->
     ok.
 
+init_per_testcase(test1a, _Config) ->
+    {skip, <<"Reason">>};
+init_per_testcase(test1b, _Config) ->
+    throw(skip);
 init_per_testcase(_TestCase, Config) ->
     Config.
 

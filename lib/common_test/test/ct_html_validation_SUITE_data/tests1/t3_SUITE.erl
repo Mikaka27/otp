@@ -25,6 +25,8 @@ init_per_suite(Config) ->
 end_per_suite(_Config) ->
     ok.
 
+init_per_group(subgroup1a, _Config) ->
+    ct:fail("init_per_group subgroup1a failure");
 init_per_group(_Group, Config) ->
     Config.
 

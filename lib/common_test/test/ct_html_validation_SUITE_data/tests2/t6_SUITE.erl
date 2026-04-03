@@ -19,7 +19,7 @@ init_per_suite(Config) ->
     Config.
 
 end_per_suite(_Config) ->
-    ok.
+    ct:fail("end_per_suite failure").
 
 init_per_group(_Group, Config) ->
     Config.

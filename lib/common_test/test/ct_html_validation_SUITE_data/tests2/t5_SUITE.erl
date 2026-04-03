@@ -19,8 +19,8 @@ groups() ->
      {subgroup2a, [], [test2a, test2b]},
      {subgroup2b, [], [test2c, test2d]}].
 
-init_per_suite(Config) ->
-    Config.
+init_per_suite(_Config) ->
+    ct:fail("init_per_suite failure").
 
 end_per_suite(_Config) ->
     ok.

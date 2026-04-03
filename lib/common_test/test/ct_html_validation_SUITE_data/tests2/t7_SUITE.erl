@@ -34,6 +34,8 @@ end_per_group(_Group, _Config) ->
 init_per_testcase(_TestCase, Config) ->
     Config.
 
+end_per_testcase(test1a, _Config) ->
+    ct:fail("end_per_testcase test1a failure");
 end_per_testcase(_TestCase, _Config) ->
     ok.
 

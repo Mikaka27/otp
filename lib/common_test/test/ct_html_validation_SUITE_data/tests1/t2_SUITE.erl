@@ -33,8 +33,8 @@ init_per_testcase(_TestCase, Config) ->
 end_per_testcase(_TestCase, _Config) ->
     ok.
 
-test1a(_Config) -> ok.
-test1b(_Config) -> ok.
+test1a(_Config) -> ct:fail("deliberate failure").
+test1b(_Config) -> error(crash_on_purpose).
 test1c(_Config) -> ok.
 test1d(_Config) -> ok.
 test2a(_Config) -> ok.
