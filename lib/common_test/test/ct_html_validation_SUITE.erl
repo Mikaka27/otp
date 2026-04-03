@@ -345,10 +345,13 @@ parse_tests(["<td>" ++ Line | Rest], [#test{start_date = undefined} = Test | Tes
 parse_tests(["<td align=right>" ++ Line | Rest], [#test{ok = undefined} = Test | Tests]) ->
     [Ok, _] = string:split(Line, "<"),
     parse_tests(Rest, [Test#test{ok = list_to_integer(Ok)} | Tests]);
-parse_tests(["<td align=right>" ++ Line | Rest], [#test{failed = undefined} = Test | Tests]) ->
+parse_tests(["<td align=right>" ++ Line0 | Rest], [#test{failed = undefined} = Test | Tests]) ->
+    Line = filter_font_color(Line0),
     [Failed, _] = string:split(Line, "<"),
     parse_tests(Rest, [Test#test{failed = list_to_integer(Failed)} | Tests]);
-parse_tests(["<td align=right>" ++ Line | Rest], [#test{skipped = undefined} = Test0 | Tests]) ->
+parse_tests(["<td align=right>" ++ Line0 | Rest], [#test{skipped = undefined} = Test0 | Tests]) ->
+    Line = filter_font_color(Line0),
+    ct:pal("Line0: ~p~nLine: ~p~n", [Line0, Line]),
     [All, _] = string:split(Line, "<"),
     [Skipped, Other0] = string:split(All, "("),
     [UserSkipped, Other1] = string:split(Other0, "/"),
@@ -357,7 +360,8 @@ parse_tests(["<td align=right>" ++ Line | Rest], [#test{skipped = undefined} = T
                       user_skipped = list_to_integer(UserSkipped),
                       auto_skipped = list_to_integer(AutoSkipped)},
     parse_tests(Rest, [Test | Tests]);
-parse_tests(["<td align=right>" ++ Line | Rest], [#test{missing_suites = undefined} = Test | Tests]) ->
+parse_tests(["<td align=right>" ++ Line0 | Rest], [#test{missing_suites = undefined} = Test | Tests]) ->
+    Line = filter_font_color(Line0),
     [MissingSuites, _] = string:split(Line, "<"),
     parse_tests(Rest, [Test#test{missing_suites = list_to_integer(MissingSuites)} | Tests]);
 parse_tests(["<td align=right>" ++ Line | Rest], [#test{node = undefined} = Test | Tests]) ->
@@ -416,6 +420,10 @@ parse_test_case("<td>" ++ Rest0, 8 = Col, Case) ->
         [Comment, Rest] ->
             parse_test_case(?NEXT_COL(Rest), Col + 1, Case#test_case{comment = Comment})
     end.
+
+filter_font_color(String0) ->
+    String1 = re:replace(String0, "<font color=.+>", "", [{return, list}]),
+    string:replace(String1, "</font>", "").
 
 month_name_to_number("Jan") -> 1;
 month_name_to_number("Feb") -> 2;
