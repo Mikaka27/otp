@@ -35,7 +35,7 @@
 -include_lib("common_test/include/ct.hrl").
 
 -define(NEXT_ROW(Text), string:find(Text, "<tr class")).
--define(NEXT_COL(Text), string:find(Text, "<td>")).
+-define(NEXT_COL(Text), string:find(Text, "<td")).
 
 -record(test, {
     test_name :: string(),
@@ -50,7 +50,18 @@
     missing_suites :: non_neg_integer(),
     node :: node(),
     ct_log_link :: string(),
-    old_runs_link :: string() | link | undefined
+    old_runs_link :: string() | link | undefined,
+    elapsed_time :: calendar:time()
+}).
+
+-record(total, {
+    ok :: non_neg_integer(),
+    failed :: non_neg_integer(),
+    skipped :: non_neg_integer(),
+    user_skipped :: non_neg_integer(),
+    auto_skipped :: non_neg_integer(),
+    missing_suites :: non_neg_integer(),
+    elapsed_time :: calendar:time()
 }).
 
 -record(test_case, {
@@ -61,9 +72,19 @@
     tc_link :: string(),
     top_log :: string(),
     end_log :: string(),
-    time :: non_neg_integer(),
-    result :: string(),
+    time :: calendar:time(),
+    result :: atom(),
     comment :: [string()] | undefined
+}).
+
+-record(test_cases_total, {
+    time :: calendar:time(),
+    result :: atom(),
+    ok :: non_neg_integer(),
+    failed :: non_neg_integer(),
+    skipped :: non_neg_integer(),
+    total :: non_neg_integer(),
+    elapsed_time :: calendar:time()
 }).
 
 %%--------------------------------------------------------------------
@@ -289,8 +310,15 @@ validate_index_html_file(Config, ExpectedTests) ->
         ct:pal("Result: ~p~n", [Result]),
         Tests = parse_tests(Result, []),
         ct:pal("Tests: ~p~n", [Tests]),
-        lists:foreach(fun(#test{suite_log_link = Link}) ->
-            validate_suite_log_file(Config, Link, [])
+        {ok, _} = collect_until("<tfoot>\n", file:read_line(Fd), Fd, []),
+        {ok, Footer} = collect_until("</tfoot>\n", file:read_line(Fd), Fd, []),
+        ct:pal("Footer: ~p~n", [Footer]),
+        Total = parse_total(lists:flatten(Footer), 10, #total{}),
+        ct:pal("Total: ~p~n", [Total]),
+        lists:foreach(fun(#test{suite_log_link = SuiteLogLink, ct_log_link = CtLogLink} = Test) ->
+            validate_suite_log_file(Config, SuiteLogLink, []),
+            IndexLink = string:replace(CtLogLink, "ctlog.html", "index.html"),
+            validate_specific_index_html_file(Config, IndexLink, [Test])
         end, Tests)
     after
         file:close(Fd)
@@ -304,9 +332,33 @@ validate_suite_log_file(Config, Link, ExpectedCases) ->
         {ok, _} = collect_until("<tbody>\n", file:read_line(Fd), Fd, []),
         {ok, Result} = collect_until("</tbody>\n", file:read_line(Fd), Fd, []),
         ct:pal("Result: ~p~n", [Result]),
-        Cases = parse_test_cases(lists:flatten(Result), undefined, []),
+        Cases = parse_test_cases(lists:flatten(Result), 1, []),
         ct:pal("Cases: ~p~n", [Cases]),
+        {ok, _} = collect_until("<tfoot>\n", file:read_line(Fd), Fd, []),
+        {ok, Footer} = collect_until("</tfoot>\n", file:read_line(Fd), Fd, []),
+        ct:pal("Footer: ~p~n", [Footer]),
+        Total = parse_test_cases_total(lists:flatten(Footer), #test_cases_total{}),
+        ct:pal("Total: ~p~n", [Total]),
         Cases
+    after
+        file:close(Fd)
+    end.
+
+validate_specific_index_html_file(Config, Link, ExpectedTests) ->
+    PrivDir = ?config(priv_dir, Config),
+    Path = filename:join(PrivDir, Link),
+    {ok, Fd} = file:open(Path, [read]),
+    try
+        {ok, _} = collect_until("<tbody>\n", file:read_line(Fd), Fd, []),
+        {ok, Content} = collect_until("</tbody>\n", file:read_line(Fd), Fd, []),
+        ct:pal("Result: ~p~n", [Content]),
+        Tests = parse_tests(Content, []),
+        ct:pal("Tests: ~p~n", [Tests]),
+        {ok, _} = collect_until("<tfoot>\n", file:read_line(Fd), Fd, []),
+        {ok, Footer} = collect_until("</tfoot>\n", file:read_line(Fd), Fd, []),
+        ct:pal("Footer: ~p~n", [Footer]),
+        Total = parse_total(lists:flatten(Footer), 6, #total{}),
+        ct:pal("Total: ~p~n", [Total])
     after
         file:close(Fd)
     end.
@@ -363,9 +415,14 @@ parse_tests(["<td align=right>" ++ Line0 | Rest], [#test{missing_suites = undefi
     Line = filter_font_color(Line0),
     [MissingSuites, _] = string:split(Line, "<"),
     parse_tests(Rest, [Test#test{missing_suites = list_to_integer(MissingSuites)} | Tests]);
-parse_tests(["<td align=right>" ++ Line | Rest], [#test{node = undefined} = Test | Tests]) ->
-    [Node, _] = string:split(Line, "<"),
-    parse_tests(Rest, [Test#test{node = list_to_atom(Node)} | Tests]);
+parse_tests(["<td align=right>" ++ Line | Rest], [#test{node = undefined, elapsed_time = undefined} = Test | Tests]) ->
+    [NodeOrElapsedTime, _] = string:split(Line, "<"),
+    case string:find(NodeOrElapsedTime, "@") of
+        nomatch ->
+            parse_tests(Rest, [Test#test{elapsed_time = parse_timestamp(NodeOrElapsedTime)} | Tests]);
+        _ ->
+            parse_tests(Rest, [Test#test{node = list_to_atom(NodeOrElapsedTime)} | Tests])
+    end;
 parse_tests(["<td><a href=\"" ++ Line0 | Rest], [#test{old_runs_link = undefined} = Test | Tests]) ->
     [Link, Line1] = string:split(Line0, "\">"),
     ["Old Runs", _] = string:split(Line1, "<"),
@@ -375,9 +432,39 @@ parse_tests(["<td>none</td>\n" | Rest], [#test{old_runs_link = undefined} = Test
 parse_tests(["</tr>\n" | Rest], Tests) ->
     parse_tests(Rest, Tests).
 
+parse_total(nomatch, _Cols, Total) ->
+    Total;
+parse_total("<tr class=" ++ Rest, Cols, Total) ->
+    parse_total(?NEXT_COL(Rest), Cols, Total);
+parse_total("<td><b>Total</b></td>" ++ Rest, Cols, Total) when Cols =:= 6; Cols =:= 10 ->
+    parse_total(?NEXT_COL(Rest), Cols, Total);
+parse_total("<td>&nbsp;</td>" ++ Rest, Cols, Total) when Cols =:= 6; Cols =:= 10 ->
+    parse_total(?NEXT_COL(Rest), Cols, Total);
+parse_total("<td align=right><b>" ++ Rest0, Cols, #total{ok = undefined} = Total) ->
+    [Ok, Rest] = string:split(Rest0, "</b>"),
+    parse_total(?NEXT_COL(Rest), Cols, Total#total{ok = list_to_integer(Ok)});
+parse_total("<td align=right><b>" ++ Rest0, Cols, #total{failed = undefined} = Total) ->
+    [Failed, Rest] = string:split(Rest0, "</b>"),
+    parse_total(?NEXT_COL(Rest), Cols, Total#total{failed = list_to_integer(Failed)});
+parse_total("<td align=right>" ++ Rest0, Cols, #total{skipped = undefined} = Total0) ->
+    [All, Rest] = string:split(Rest0, "<"),
+    [Skipped, Other0] = string:split(All, "("),
+    [UserSkipped, Other1] = string:split(Other0, "/"),
+    [AutoSkipped, _] = string:split(Other1, ")"),
+    Total = Total0#total{skipped = list_to_integer(string:trim(Skipped)),
+                         user_skipped = list_to_integer(UserSkipped),
+                         auto_skipped = list_to_integer(AutoSkipped)},
+    parse_total(?NEXT_COL(Rest), Cols, Total);
+parse_total("<td align=right><b>" ++ Rest0, Cols, #total{missing_suites = undefined} = Total) ->
+    [MissingSuites, Rest] = string:split(Rest0, "</b>"),
+    parse_total(?NEXT_COL(Rest), Cols, Total#total{missing_suites = list_to_integer(MissingSuites)});
+parse_total("<td align=right><b>" ++ Rest0, 6 = Cols, #total{elapsed_time = undefined} = Total) ->
+    [ElapsedTime, Rest] = string:split(Rest0, "</b>"),
+    parse_total(?NEXT_COL(Rest), Cols, Total#total{elapsed_time = parse_timestamp(ElapsedTime)}).
+
 parse_test_cases(nomatch, _, Cases) ->
     lists:reverse(Cases);
-parse_test_cases("<tr class=" ++ Rest, 1, Cases) ->
+parse_test_cases("<tr class=" ++ Rest, _, Cases) ->
     parse_test_cases(?NEXT_COL(Rest), 1, [#test_case{} | Cases]);
 parse_test_cases("<td><font color=\"black\">" ++ Rest0, 1 = Col, [Case | Cases]) ->
     case string:take(Rest0, lists:seq($0, $9)) of
@@ -428,6 +515,34 @@ parse_test_cases("<td>" ++ Rest0, 8 = _Col, [Case | Cases]) ->
             Comment = [filter_font_color(C) || C <- Comment1],
             parse_test_cases(?NEXT_ROW(Rest), 1, [Case#test_case{comment = Comment} | Cases])
     end.
+
+parse_test_cases_total(nomatch, TCTotal) ->
+    TCTotal;
+parse_test_cases_total("<tr>" ++ Rest, TCTotal) ->
+    parse_test_cases_total(?NEXT_COL(Rest), TCTotal);
+parse_test_cases_total("<td><b>TOTAL</b></td>" ++ Rest, TCTotal) ->
+    parse_test_cases_total(?NEXT_COL(Rest), TCTotal);
+parse_test_cases_total("<td></td>" ++ Rest, TCTotal) ->
+    parse_test_cases_total(?NEXT_COL(Rest), TCTotal);
+parse_test_cases_total("<td>" ++ Rest0, #test_cases_total{time = undefined} = TCTotal) ->
+    [Time, Rest] = string:split(Rest0, "<"),
+    parse_test_cases_total(?NEXT_COL(Rest), TCTotal#test_cases_total{time = parse_timestamp(Time)});
+parse_test_cases_total("<td><b>" ++ Rest0, #test_cases_total{result = undefined} = TCTotal) ->
+    [Result0, Rest] = string:split(Rest0, "<"),
+    Result = string:lowercase(Result0),
+    parse_test_cases_total(?NEXT_COL(Rest), TCTotal#test_cases_total{result = list_to_atom(Result)});
+parse_test_cases_total("<td>" ++ Rest0, #test_cases_total{ok = undefined} = TCTotal0) ->
+    [Ok, Rest1] = string:split(Rest0, " Ok, "),
+    [Failed, Rest2] = string:split(Rest1, " Failed, "),
+    [Skipped, Rest3] = string:split(Rest2, " Skipped of "),
+    [Total, Rest4] = string:split(Rest3, "<br>Elapsed Time: "),
+    [ElapsedTime, Rest] = string:split(Rest4, "</td>"),
+    TCTotal = TCTotal0#test_cases_total{ok = list_to_integer(Ok),
+                                        failed = list_to_integer(Failed),
+                                        skipped = list_to_integer(Skipped),
+                                        total = list_to_integer(Total),
+                                        elapsed_time = parse_timestamp(ElapsedTime)},
+    parse_test_cases_total(?NEXT_COL(Rest), TCTotal).
 
 filter_font_color(String0) ->
     String1 = re:replace(String0, "<font color=[^>]+>", ""),
