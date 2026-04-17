@@ -23,7 +23,8 @@
 -module(ct_results_parser).
 
 -export([parse_index_html_file/1,
-         parse_suite_log_file/1]).
+         parse_suite_log_file/1,
+         parse_old_runs_file/1]).
 
 -include("ct_results_parser.hrl").
 
@@ -66,6 +67,18 @@ parse_suite_log_file(Path) ->
         {ok, Footer} = collect_until("</tfoot>\n", file:read_line(Fd), Fd, []),
         Total = parse_test_cases_total(lists:flatten(Footer), #test_cases_total{}),
         lists:append(TestCases, [Total])
+    after
+        file:close(Fd)
+    end.
+
+%%%-----------------------------------------------------------------
+
+parse_old_runs_file(Path) ->
+    {ok, Fd} = file:open(Path, [read]),
+    try
+        {ok, _} = collect_until("<tbody>\n", file:read_line(Fd), Fd, []),
+        {ok, Table} = collect_until("</tbody>\n", file:read_line(Fd), Fd, []),
+        parse_old_runs(lists:flatten(Table), [])
     after
         file:close(Fd)
     end.
@@ -262,6 +275,58 @@ parse_test_cases_total("<td>" ++ Rest0, #test_cases_total{ok = undefined} = TCTo
                                         total = list_to_integer(Total),
                                         elapsed_time = parse_timestamp(ElapsedTime)},
     parse_test_cases_total(?NEXT_COL(Rest), TCTotal).
+
+%%%-----------------------------------------------------------------
+
+parse_old_runs(nomatch, Runs) ->
+    lists:reverse(Runs);
+parse_old_runs("<tr class=" ++ Rest, Runs) ->
+    parse_old_runs(?NEXT_COL(Rest), [#old_run{} | Runs]);
+parse_old_runs("<td><a href=\"" ++ Rest0, [#old_run{link = undefined} = Run | Runs]) ->
+    [Link, Rest1] = string:split(Rest0, "\">"),
+    [Date, Rest] = string:split(Rest1, "<"),
+    {ok, [_DayOfWeek, MonthName, Day, Year, Hour, Minute, Second], _} =
+        io_lib:fread("~s ~s ~d ~d ~d:~d:~d", Date),
+    Month = month_name_to_number(MonthName),
+    DateTime = {{Year, Month, Day}, {Hour, Minute, Second}},
+    parse_old_runs(?NEXT_COL(Rest), [Run#old_run{link = Link, start_date = DateTime} | Runs]);
+parse_old_runs("<td align=center>" ++ Rest0, [#old_run{node = undefined} = Run | Runs]) ->
+    [Node, Rest] = string:split(Rest0, "<"),
+    parse_old_runs(?NEXT_COL(Rest), [Run#old_run{node = list_to_atom(Node)} | Runs]);
+parse_old_runs("<td align=center><b>" ++ Rest0, [#old_run{label = undefined} = Run | Runs]) ->
+    [Label, Rest] = string:split(Rest0, "<"),
+    parse_old_runs(?NEXT_COL(Rest), [Run#old_run{label = list_to_atom(Label)} | Runs]);
+parse_old_runs("<td align=right>" ++ Rest0, [#old_run{tests = undefined} = Run | Runs]) ->
+    [Tests, Rest] = string:split(Rest0, "<"),
+    parse_old_runs(?NEXT_COL(Rest), [Run#old_run{tests = list_to_integer(Tests)} | Runs]);
+parse_old_runs("<td align=center title='" ++ Rest0, [#old_run{test_names = undefined} = Run | Runs]) ->
+    [TestNames0, Rest] = string:split(Rest0, "'"),
+    TestNames = string:split(TestNames0, ", ", all),
+    parse_old_runs(?NEXT_COL(Rest), [Run#old_run{test_names = TestNames} | Runs]);
+parse_old_runs("<td align=right>" ++ Rest0, [#old_run{total = undefined} = Run | Runs]) ->
+    [Total, Rest] = string:split(Rest0, "<"),
+    parse_old_runs(?NEXT_COL(Rest), [Run#old_run{total = list_to_integer(Total)} | Runs]);
+parse_old_runs("<td align=right>" ++ Rest0, [#old_run{ok = undefined} = Run | Runs]) ->
+    [Ok, Rest] = string:split(Rest0, "<"),
+    parse_old_runs(?NEXT_COL(Rest), [Run#old_run{ok = list_to_integer(Ok)} | Runs]);
+parse_old_runs("<td align=right>" ++ Rest0, [#old_run{failed = undefined} = Run | Runs]) ->
+    Line = filter_font_color(Rest0),
+    [Failed, Rest] = string:split(Line, "<"),
+    parse_old_runs(?NEXT_COL(Rest), [Run#old_run{failed = list_to_integer(Failed)} | Runs]);
+parse_old_runs("<td align=right>" ++ Rest0, [#old_run{skipped = undefined} = Run0 | Runs]) ->
+    Line = filter_font_color(Rest0),
+    [All, Rest] = string:split(Line, "<"),
+    [Skipped, Other0] = string:split(All, "("),
+    [UserSkipped, Other1] = string:split(Other0, "/"),
+    [AutoSkipped, _] = string:split(Other1, ")"),
+    Run = Run0#old_run{skipped = list_to_integer(string:trim(Skipped)),
+                       user_skipped = list_to_integer(UserSkipped),
+                       auto_skipped = list_to_integer(AutoSkipped)},
+    parse_old_runs(?NEXT_COL(Rest), [Run | Runs]);
+parse_old_runs("<td align=right>" ++ Rest0, [#old_run{missing_suites = undefined} = Run | Runs]) ->
+    Line = filter_font_color(Rest0),
+    [MissingSuites, Rest] = string:split(Line, "<"),
+    parse_old_runs(?NEXT_ROW(Rest), [Run#old_run{missing_suites = list_to_integer(MissingSuites)} | Runs]).
 
 %%%-----------------------------------------------------------------
 

@@ -73,3 +73,21 @@
     total :: non_neg_integer(),
     elapsed_time :: calendar:time()
 }).
+
+%% Table row in ct_logs/all_runs.html
+
+-record(old_run, {
+    start_date :: calendar:datetime(),
+    link :: string(),
+    node :: atom(),
+    label :: atom() | undefined,
+    tests :: non_neg_integer(),
+    test_names :: [string()],
+    total :: non_neg_integer(),
+    ok :: non_neg_integer(),
+    failed :: non_neg_integer(),
+    skipped :: non_neg_integer(),
+    user_skipped :: non_neg_integer(),
+    auto_skipped :: non_neg_integer(),
+    missing_suites :: non_neg_integer()
+}).

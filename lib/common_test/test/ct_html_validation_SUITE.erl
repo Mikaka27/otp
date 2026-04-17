@@ -146,10 +146,11 @@ validate_index_html_file(Config, ExpectedTests) ->
     Tests = ct_results_parser:parse_index_html_file(Path),
     ok = ct_results_validator:validate_total(Tests),
     lists:foreach(fun(#total{}) -> ok;
-                     (#test{suite_log_link = SuiteLogLink, ct_log_link = CtLogLink} = Test) ->
+                     (#test{suite_log_link = SuiteLogLink, ct_log_link = CtLogLink, old_runs_link = OldRunsLink} = Test) ->
                           validate_suite_log_file(Config, SuiteLogLink, []),
                           IndexLink = string:replace(CtLogLink, "ctlog.html", "index.html"),
-                          validate_specific_index_html_file(Config, IndexLink, [Test])
+                          validate_specific_index_html_file(Config, IndexLink, [Test]),
+                          validate_old_runs_file(Config, OldRunsLink, [])
                   end, Tests).
 
 validate_suite_log_file(Config, Link, ExpectedCases) ->
@@ -163,6 +164,13 @@ validate_specific_index_html_file(Config, Link, ExpectedTests) ->
     Path = filename:join(PrivDir, Link),
     Tests = ct_results_parser:parse_index_html_file(Path),
     ok = ct_results_validator:validate_total(Tests).
+
+validate_old_runs_file(_Config, undefined, _ExpectedOldRuns) ->
+    ok;
+validate_old_runs_file(Config, Link, ExpectedOldRuns) ->
+    PrivDir = ?config(priv_dir, Config),
+    Path = filename:join(PrivDir, Link),
+    OldRuns = ct_results_parser:parse_old_runs_file(Path).
 
 expected_test_cases(t1_SUITE) ->
     [#test_case{module = "t1_SUITE",
