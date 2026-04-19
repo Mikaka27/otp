@@ -25,7 +25,7 @@
 
 -export([init_per_testcase/2, end_per_testcase/2,
          init_per_group/2, end_per_group/2,
-         all/0, groups/0]).
+         suite/0, all/0, groups/0]).
 
 -export([system_info/1, table_info/1, error_description/1,
          db_node_lifecycle/1, evil_delete_db_node/1, start_and_stop/1,
@@ -47,7 +47,9 @@
          record_name_dirty_access_ram/1,
          record_name_dirty_access_disc/1,
          record_name_dirty_access_disc_only/1,
-         record_name_dirty_access_xets/1]).
+         record_name_dirty_access_xets/1,
+         offline_restart_ram_copies/1
+         ]).
 
 -export([info_check/8, index_size/1]).
 
@@ -61,6 +63,8 @@ end_per_testcase(Func, Conf) ->
     mnesia_test_lib:end_per_testcase(Func, Conf).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+suite() -> [{ct_hooks,[{ts_install_cth,[{nodenames,3}]}]}].
+
 all() -> 
     [system_info, table_info, error_description,
      db_node_lifecycle, evil_delete_db_node, start_and_stop,
@@ -78,7 +82,8 @@ all() ->
      {group, debug_support}, sorted_ets, index_cleanup,
      {mnesia_dirty_access_test, all},
      {mnesia_trans_access_test, all},
-     {mnesia_evil_backup, all}].
+     {mnesia_evil_backup, all},
+     offline_restart_ram_copies].
 
 groups() -> 
     [{table_access_modifications, [],
@@ -2678,3 +2683,41 @@ index_size(Tab) ->
         {index, _, [{_, {ram, Ref}}=Dbg]} -> {Tab, node(), ets:info(Ref, size), Dbg};
         {index, _, [{_, {dets, Ref}}=Dbg]} -> {Tab, node(), dets:info(Ref, size), Dbg}
     end.
+
+offline_restart_ram_copies(suite) -> [];
+offline_restart_ram_copies(Config) when is_list(Config) ->
+    [N1, N2, N3] = All = ?acquire_nodes(3, Config),
+
+    ?match({atomic, ok}, mnesia:create_table(ram, [{ram_copies, All}])),
+    ?match({atomic, ok}, mnesia:create_table(disk, [{disc_copies, All}])),
+
+    N = 10,
+    ?match(ok, mnesia:sync_dirty(fun() ->
+        [mnesia:write({ram, K, K}) || K <- lists:seq(1, N)], ok end)),
+    ?match(ok, mnesia:sync_dirty(fun() ->
+        [mnesia:write({disk, K, K}) || K <- lists:seq(1, N)], ok end)),
+    
+    ?match([], mnesia_test_lib:kill_mnesia([N1])),
+    {ok, P1} = mnesia_test_lib:pause_node(N2),
+    try
+        {ok, P2} = mnesia_test_lib:pause_node(N3),
+        try
+            ?match(ok, mnesia:start()),
+            ?match(ok, mnesia:wait_for_tables([ram], 5000)),
+            ?match(ok, mnesia:wait_for_tables([disk], 5000)),
+
+            ?match(timeout, mnesia_test_lib:resume_node(P1)),
+            ?match(timeout, mnesia_test_lib:resume_node(P2))
+        after
+            ?match(ok, mnesia_test_lib:resume_node(P2))
+        end
+    after
+        ?match(ok, mnesia_test_lib:resume_node(P1))
+    end,
+    RamPat = {ram, '_', '_'},
+    DiskPat = {disk, '_', '_'},
+
+    ExpectedRam = [{ram, K, K} || K <- lists:seq(1, N)],
+    ExpectedDisk = [{disk, K, K} || K <- lists:seq(1, N)],
+    ?match({[ExpectedRam, ExpectedRam, ExpectedRam], []}, rpc:multicall(All, mnesia, dirty_select, [RamPat])),
+    ?match({[ExpectedDisk, ExpectedDisk, ExpectedDisk], []}, rpc:multicall(All, mnesia, dirty_select, [DiskPat])).

@@ -119,6 +119,8 @@
 	 remote_start/3,
 	 remote_stop/1,
 	 remote_kill/1,
+     pause_node/1,
+     resume_node/1,
 
 	 reload_appls/2,
 
@@ -1094,3 +1096,20 @@ sort(W) ->
 
 get_ext_test_server_name() ->
     list_to_atom("ext_test_server_" ++ atom_to_list(node())).
+
+pause_node(Node) ->
+    Pid = rpc:call(Node, os, getpid, []),
+    try
+        os:cmd("kill -s STOP " ++ Pid, #{exception_on_failure => true}),
+        {ok, Pid}
+    catch _:Reason:_ ->
+            {error, Reason}
+    end.
+
+resume_node(Pid) ->
+    try
+        os:cmd("kill -s CONT " ++ Pid, #{exception_on_failure => true}),
+        ok
+    catch _:Reason:_ ->
+        {error, Reason}
+    end.
