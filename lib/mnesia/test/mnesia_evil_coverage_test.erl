@@ -2688,8 +2688,8 @@ offline_restart_ram_copies(suite) -> [];
 offline_restart_ram_copies(Config) when is_list(Config) ->
     [N1, N2, N3] = All = ?acquire_nodes(3, Config),
 
-    ?match({atomic, ok}, mnesia:create_table(ram, [{ram_copies, All}])),
-    ?match({atomic, ok}, mnesia:create_table(disk, [{disc_copies, All}])),
+    ?match({atomic, ok}, mnesia:create_table(ram, [{ram_copies, All}, {type, ordered_set}])),
+    ?match({atomic, ok}, mnesia:create_table(disk, [{disc_copies, All}, {type, ordered_set}])),
 
     N = 10,
     ?match(ok, mnesia:sync_dirty(fun() ->
@@ -2699,25 +2699,24 @@ offline_restart_ram_copies(Config) when is_list(Config) ->
     
     ?match([], mnesia_test_lib:kill_mnesia([N1])),
     {ok, P1} = mnesia_test_lib:pause_node(N2),
-    try
-        {ok, P2} = mnesia_test_lib:pause_node(N3),
-        try
-            ?match(ok, mnesia:start()),
-            ?match(ok, mnesia:wait_for_tables([ram], 5000)),
-            ?match(ok, mnesia:wait_for_tables([disk], 5000)),
+    {ok, P2} = mnesia_test_lib:pause_node(N3),
 
-            ?match(timeout, mnesia_test_lib:resume_node(P1)),
-            ?match(timeout, mnesia_test_lib:resume_node(P2))
-        after
-            ?match(ok, mnesia_test_lib:resume_node(P2))
-        end
-    after
-        ?match(ok, mnesia_test_lib:resume_node(P1))
-    end,
-    RamPat = {ram, '_', '_'},
-    DiskPat = {disk, '_', '_'},
+    ?match(ok, rpc:call(N1, mnesia, start, [])),
+    ?match(ok, rpc:call(N1, mnesia, wait_for_tables, [[ram], 5000])),
+    ?match({timeout, _}, rpc:call(N1, mnesia, wait_for_tables, [[disk], 5000])),
+
+    ?match(ok, mnesia_test_lib:resume_node(P2)),
+    ?match(ok, mnesia_test_lib:resume_node(P1)),
+
+    ?match({ok, _}, rpc:call(N1, mnesia_controller, connect_nodes, [rpc:call(N1, mnesia, system_info, [db_nodes])])),
+
+    ?match({[ok, ok, ok], []}, rpc:multicall(All, mnesia, wait_for_tables, [[ram, disk], 5000])),
+
+    RamPat = [{{ram, '_', '_'}, [], ['$_']}],
+    DiskPat = [{{disk, '_', '_'}, [], ['$_']}],
 
     ExpectedRam = [{ram, K, K} || K <- lists:seq(1, N)],
     ExpectedDisk = [{disk, K, K} || K <- lists:seq(1, N)],
-    ?match({[ExpectedRam, ExpectedRam, ExpectedRam], []}, rpc:multicall(All, mnesia, dirty_select, [RamPat])),
-    ?match({[ExpectedDisk, ExpectedDisk, ExpectedDisk], []}, rpc:multicall(All, mnesia, dirty_select, [DiskPat])).
+    ?match({[ExpectedRam, ExpectedRam, ExpectedRam], []}, rpc:multicall(All, mnesia, dirty_select, [ram, RamPat])),
+    ?match({[ExpectedDisk, ExpectedDisk, ExpectedDisk], []}, rpc:multicall(All, mnesia, dirty_select, [disk, DiskPat])).
+
