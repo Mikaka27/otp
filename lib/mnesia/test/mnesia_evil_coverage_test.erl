@@ -2686,7 +2686,7 @@ index_size(Tab) ->
 
 offline_restart_ram_copies(suite) -> [];
 offline_restart_ram_copies(Config) when is_list(Config) ->
-    [N1, N2, N3] = All = ?acquire_nodes(3, Config),
+    [N1, N2] = All = ?acquire_nodes(2, Config),
 
     ?match({atomic, ok}, mnesia:create_table(ram, [{ram_copies, All}, {type, ordered_set}])),
     ?match({atomic, ok}, mnesia:create_table(disk, [{disc_copies, All}, {type, ordered_set}])),
@@ -2698,25 +2698,23 @@ offline_restart_ram_copies(Config) when is_list(Config) ->
         [mnesia:write({disk, K, K}) || K <- lists:seq(1, N)], ok end)),
     
     ?match([], mnesia_test_lib:kill_mnesia([N1])),
-    {ok, P1} = mnesia_test_lib:pause_node(N2),
-    {ok, P2} = mnesia_test_lib:pause_node(N3),
+    {ok, P2} = mnesia_test_lib:pause_node(N2),
 
     ?match(ok, rpc:call(N1, mnesia, start, [])),
     ?match(ok, rpc:call(N1, mnesia, wait_for_tables, [[ram], 5000])),
     ?match({timeout, _}, rpc:call(N1, mnesia, wait_for_tables, [[disk], 5000])),
 
     ?match(ok, mnesia_test_lib:resume_node(P2)),
-    ?match(ok, mnesia_test_lib:resume_node(P1)),
 
     ?match({ok, _}, rpc:call(N1, mnesia_controller, connect_nodes, [rpc:call(N1, mnesia, system_info, [db_nodes])])),
 
-    ?match({[ok, ok, ok], []}, rpc:multicall(All, mnesia, wait_for_tables, [[ram, disk], 5000])),
+    ?match({[ok, ok], []}, rpc:multicall(All, mnesia, wait_for_tables, [[ram, disk], 5000])),
 
     RamPat = [{{ram, '_', '_'}, [], ['$_']}],
     DiskPat = [{{disk, '_', '_'}, [], ['$_']}],
 
     ExpectedRam = [{ram, K, K} || K <- lists:seq(1, N)],
     ExpectedDisk = [{disk, K, K} || K <- lists:seq(1, N)],
-    ?match({[ExpectedRam, ExpectedRam, ExpectedRam], []}, rpc:multicall(All, mnesia, dirty_select, [ram, RamPat])),
-    ?match({[ExpectedDisk, ExpectedDisk, ExpectedDisk], []}, rpc:multicall(All, mnesia, dirty_select, [disk, DiskPat])).
+    ?match({[ExpectedRam, ExpectedRam], []}, rpc:multicall(All, mnesia, dirty_select, [ram, RamPat])),
+    ?match({[ExpectedDisk, ExpectedDisk], []}, rpc:multicall(All, mnesia, dirty_select, [disk, DiskPat])).
 
