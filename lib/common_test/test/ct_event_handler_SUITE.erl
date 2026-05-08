@@ -63,7 +63,7 @@ end_per_testcase(TestCase, Config) ->
 suite() -> [{ct_hooks,[ts_install_cth]}].
 
 all() -> 
-    [start_stop, results, event_mgrs].
+    [start_stop, results, event_mgrs, test_run_start_event].
 
 groups() -> 
     [].
@@ -193,6 +193,46 @@ results(Config) when is_list(Config) ->
 event_mgrs(_) ->
     ?CT_EVMGR_REF = ct:get_event_mgr_ref(),
     ?CT_MEVMGR_REF = ct_master:get_event_mgr_ref().
+
+test_run_start_event(Config) when is_list(Config) ->
+    DataDir = ?config(data_dir, Config),
+
+    TestObj = filename:join(DataDir, "event_handling_1"),
+    Suite1 = filename:join(TestObj, "test/eh_11_SUITE"),
+    Opts0 = ct_test_support:get_opts(Config),
+
+    Level = ?config(trace_level, Config),
+    EvHArgs = [{cbm,ct_test_support},{trace_level,Level}],
+
+    %% Run with group selection — should produce a spec_name with {group,...}
+    Opts = Opts0 ++ [{suite,Suite1},{group,g1},
+		     {event_handler,{eh_A,EvHArgs}}],
+
+    ERPid = ct_test_support:start_event_receiver(Config),
+
+    ok = ct_test_support:run(Opts, Config),
+
+    Events = ct_test_support:get_events(ERPid, Config),
+
+    ct_test_support:log_events(test_run_start_event,
+			       ct_test_support:reformat(Events, eh_A),
+			       ?config(priv_dir, Config),
+			       Opts),
+
+    %% Verify that a test_run_start event was emitted with spec_name
+    %% containing {group,g1}
+    MatchFun = fun(Data) when is_map(Data) ->
+		       #{spec_name := SN} = Data,
+		       case string:find(SN, "{group,g1}") of
+			   nomatch -> error({bad_spec_name, SN});
+			   _ -> match
+		       end
+	       end,
+    TestEvents =
+	[{eh_A,test_run_start,MatchFun},
+	 {eh_A,start_logging,'_'}],
+
+    ok = ct_test_support:verify_events(TestEvents, Events, Config).
 
 
 %%%-----------------------------------------------------------------

@@ -2448,6 +2448,7 @@ add_known(N, N1) ->
 
 add_jobs([{TestDir,all,_}|Tests], Skip, Opts, CleanUp) ->
     Name = get_name(TestDir),
+    notify_test_run_start(Name, Name, TestDir),
     case catch test_server_ctrl:add_dir_with_skip(Name, TestDir,
 						  skiplist(TestDir,Skip)) of
 	{'EXIT',_} ->
@@ -2466,6 +2467,8 @@ add_jobs([{TestDir,[Suite],all}|Tests], Skip,
 add_jobs([{TestDir,Suites,all}|Tests], Skip,
 	 Opts, CleanUp) when is_list(Suites) ->
     Name = get_name(TestDir) ++ ".suites",
+    SpecName = get_name(TestDir) ++ "." ++ get_spec_name(Suites),
+    notify_test_run_start(Name, SpecName, TestDir),
     case catch test_server_ctrl:add_module_with_skip(Name, Suites,
 						     skiplist(TestDir,Skip)) of
 	{'EXIT',_} ->
@@ -2482,6 +2485,7 @@ add_jobs([{TestDir,Suite,all}|Tests], Skip, Opts, CleanUp) ->
     case maybe_interpret(Suite, all, Opts) of
 	ok ->
 	    Name =  get_name(TestDir) ++ "." ++ atom_to_list(Suite),
+	    notify_test_run_start(Name, Name ++ ".all", TestDir),
 	    case catch test_server_ctrl:add_module_with_skip(Name, [Suite],
 							     skiplist(TestDir,
 								      Skip)) of
@@ -2522,6 +2526,9 @@ add_jobs([{TestDir,Suite,Confs}|Tests], Skip, Opts, CleanUp) when
 		".groups"
 	end,
     TestName = get_name(TestDir) ++ "." ++ atom_to_list(Suite) ++ GrTestName,
+    SpecName = get_name(TestDir) ++ "." ++ atom_to_list(Suite) ++ "." ++
+	get_spec_name(Confs),
+    notify_test_run_start(TestName, SpecName, TestDir),
     case maybe_interpret(Suite, init_per_group, Opts) of
 	ok ->
 	    case catch test_server_ctrl:add_conf_with_skip(TestName,
@@ -2556,6 +2563,9 @@ add_jobs([{TestDir,Suite,Cases}|Tests],
     case maybe_interpret(Suite, Cases1, Opts) of
 	ok ->
 	    Name =  get_name(TestDir) ++ "." ++ atom_to_list(Suite) ++ ".cases",
+	    SpecName = get_name(TestDir) ++ "." ++ atom_to_list(Suite) ++ "." ++
+		get_spec_name(Cases1),
+	    notify_test_run_start(Name, SpecName, TestDir),
 	    case catch test_server_ctrl:add_cases_with_skip(Name, Suite, Cases1,
 							    skiplist(TestDir,
 								     Skip)) of
@@ -2577,6 +2587,7 @@ add_jobs([{TestDir,Suite,Case}|Tests], Skip, Opts, CleanUp) when is_atom(Case) -
 	ok ->
 	    Name = get_name(TestDir) ++	"." ++ atom_to_list(Suite) ++ "." ++
 		atom_to_list(Case),
+	    notify_test_run_start(Name, Name, TestDir),
 	    case catch test_server_ctrl:add_case_with_skip(Name, Suite, Case,
 							   skiplist(TestDir,
 								    Skip)) of
@@ -3307,3 +3318,38 @@ ensure_atom(List) when is_list(List) ->
     [ensure_atom(Item) || Item <- List];
 ensure_atom(Other) ->				
     Other.
+
+notify_test_run_start(TestName, SpecName, TestDir) ->
+    ct_event:notify(#event{name = test_run_start,
+			   node = node(),
+			   data = #{test_name => TestName,
+				    spec_name => SpecName,
+				    test_dir => TestDir}}).
+
+get_spec_name(Item) when is_atom(Item) ->
+    atom_to_list(Item);
+get_spec_name(Items) when is_list(Items) ->
+    Names = lists:filtermap(fun get_spec_name_item/1, Items),
+    case Names of
+	[Name] -> Name;
+	_ -> "[" ++ lists:join(", ", Names) ++ "]"
+    end.
+
+get_spec_name_item({conf, Props, _Init, SubSpec, _End}) ->
+    case lists:member(skipped, Props) of
+	false ->
+	    GrName = format_group_path(proplists:get_value(name, Props)),
+	    case SubSpec of
+		all -> {true, "{group," ++ GrName ++ "}"};
+		_ -> {true, "{group," ++ GrName ++ "}." ++ get_spec_name(SubSpec)}
+	    end;
+	true ->
+	    false
+    end;
+get_spec_name_item(Other) ->
+    {true, lists:flatten(io_lib:format("~0tp", [Other]))}.
+
+format_group_path(Names) when is_list(Names), is_atom(hd(Names)) ->
+    lists:join(".", lists:map(fun atom_to_list/1, Names));
+format_group_path(Name) when is_atom(Name) ->
+    atom_to_list(Name).

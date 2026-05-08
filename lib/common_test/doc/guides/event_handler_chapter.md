@@ -157,6 +157,23 @@ The general events are as follows:
   This event indicates that the last test case has been executed and
   `Common Test` is shutting down.
 
+- **`#event{name = test_run_start, data = #{test_name => TestName, spec_name => SpecName, test_dir => TestDir}}`** -
+  `TestName = string()`, name identifying the test (for example,
+  `"myapp.my_SUITE"` or `"myapp.my_SUITE.groups"`).
+
+  `SpecName = string()`, a detailed identity string that encodes the full
+  test selection (for example, `"myapp.my_SUITE.all"`,
+  `"myapp.my_SUITE.parent_group.subgroup_a"`, or
+  `"myapp.my_SUITE.[grp1, grp2.sub1]"`). This is the key field for
+  distinguishing parallel runs targeting the same suite with different
+  group or case selections.
+
+  `TestDir = string()`, the directory containing the test suite source.
+
+  This event is sent from `ct_run` when a test job is about to be
+  submitted to the test server. It fires before the test starts executing,
+  once per job for all test types (suites, groups, and cases).
+
 - **`#event{name = start_info, data = {Tests,Suites,Cases}}`** -
   `Tests = integer()`, number of tests.
 
