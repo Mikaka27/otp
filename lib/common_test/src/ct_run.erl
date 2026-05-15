@@ -3349,6 +3349,8 @@ get_spec_name_item({conf, Props, _Init, SubSpec, _End}) ->
 get_spec_name_item(Other) ->
     {true, lists:flatten(io_lib:format("~0tp", [Other]))}.
 
+format_group_path([Path|_] = Names) when is_list(Path) ->
+    lists:join(", ", lists:map(fun format_group_path/1, Names));
 format_group_path(Names) when is_list(Names), is_atom(hd(Names)) ->
     lists:join(".", lists:map(fun atom_to_list/1, Names));
 format_group_path(Name) when is_atom(Name) ->
