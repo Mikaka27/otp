@@ -1206,6 +1206,16 @@ handle_event(info, {Proto, Sock, NewData}, StateName,
                                  io_lib:format("Bad packet: Size (~p bytes) exceeds max size",
                                                [PacketLen]),
                                  StateName, D0),
+            {stop, Shutdown, D};
+
+    {error, {packet_not_aligned, PacketLen}} ->
+            BlockSize0 = SshParams#ssh.decrypt_block_size,
+            BlockSize = max(8, BlockSize0),
+            {Shutdown, D} =
+                ?send_disconnect(?SSH_DISCONNECT_PROTOCOL_ERROR,
+                                 io_lib:format("Bad packet: Size (~p bytes) not aligned to block size (~p)",
+                                               [PacketLen, BlockSize]),
+                                 StateName, D0),
             {stop, Shutdown, D}
     catch
 	C:E:ST ->
