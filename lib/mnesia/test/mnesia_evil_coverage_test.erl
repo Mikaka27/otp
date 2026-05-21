@@ -2696,17 +2696,19 @@ offline_restart_ram_copies(Config) when is_list(Config) ->
         [mnesia:write({ram, K, K}) || K <- lists:seq(1, N)], ok end)),
     ?match(ok, mnesia:sync_dirty(fun() ->
         [mnesia:write({disk, K, K}) || K <- lists:seq(1, N)], ok end)),
-    
+
     ?match([], mnesia_test_lib:kill_mnesia([N1])),
-    {ok, P2} = mnesia_test_lib:pause_node(N2),
+    OldCookie = erlang:get_cookie(),
+    ?match(true, erlang:set_cookie(invalid_cookie)),
+    ?match(true, net_kernel:disconnect(N2)),
 
-    ?match(ok, rpc:call(N1, mnesia, start, [])),
-    ?match(ok, rpc:call(N1, mnesia, wait_for_tables, [[ram], 5000])),
-    ?match({timeout, _}, rpc:call(N1, mnesia, wait_for_tables, [[disk], 5000])),
+    ?match(ok, mnesia:start()),
+    ?match(ok, mnesia:wait_for_tables([ram], 5000)),
+    ?match({timeout, _}, mnesia:wait_for_tables([disk], 5000)),
 
-    ?match(ok, mnesia_test_lib:resume_node(P2)),
-
-    ?match({ok, _}, rpc:call(N1, mnesia_controller, connect_nodes, [rpc:call(N1, mnesia, system_info, [db_nodes])])),
+    ?match(true, erlang:set_cookie(OldCookie)),
+    ?match(pong, net_adm:ping(N2)),
+    ?match({ok, _}, mnesia_controller:connect_nodes(mnesia:system_info(db_nodes))),
 
     ?match({[ok, ok], []}, rpc:multicall(All, mnesia, wait_for_tables, [[ram, disk], 5000])),
 

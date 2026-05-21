@@ -267,7 +267,7 @@ node_start_link(Host, Name, Retries) ->
     end.
 
 starter(Host, Name, Args) ->
-    {ok, _, Node} = peer:start(#{host => Host, name => Name, args => Args}),
+    {ok, _, Node} = peer:start(#{host => Host, name => Name, args => Args, connection => 0}),
     {ok, Node}.
 
 node_sup() ->
