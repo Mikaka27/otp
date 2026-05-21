@@ -119,8 +119,6 @@
 	 remote_start/3,
 	 remote_stop/1,
 	 remote_kill/1,
-     pause_node/1,
-     resume_node/1,
 
 	 reload_appls/2,
 
@@ -134,7 +132,8 @@
 	 init_per_testcase/2,
 	 end_per_testcase/2,
 	 kill_tc/2,
-	 get_ext_test_server_name/0
+	 get_ext_test_server_name/0,
+     get_peer_ref/1
 	]).
 
 -include("mnesia_test_lib.hrl").
@@ -247,7 +246,7 @@ node_start_link(Host, Name, Retries) ->
             "-pa", filename:dirname(code:which(?MODULE)),
             "-pa", filename:dirname(code:which(mnesia))],
     case starter(Host, Name, Args) of
-	{ok, NewNode} ->
+	{ok, NewPeer, NewNode} ->
 	    ?match(pong, net_adm:ping(NewNode)),
 	    {ok, Cwd} = file:get_cwd(),
 	    Path = code:get_path(),
@@ -256,7 +255,7 @@ node_start_link(Host, Name, Retries) ->
 	    ok = rpc:call(NewNode, error_logger, tty, [false]),
 	    spawn_link(NewNode, ?MODULE, node_sup, []),
 	    rpc:multicall([node() | nodes()], global, sync, []),
-	    {ok, NewNode};
+	    {ok, NewPeer, NewNode};
 	{error, Reason} when Retries == 0->
 	    {error, Reason};
 	{error, Reason} ->
@@ -267,8 +266,7 @@ node_start_link(Host, Name, Retries) ->
     end.
 
 starter(Host, Name, Args) ->
-    {ok, _, Node} = peer:start(#{host => Host, name => Name, args => Args, connection => 0}),
-    {ok, Node}.
+    peer:start(#{host => Host, name => Name, args => Args, connection => 0}).
 
 node_sup() ->
     process_flag(trap_exit, true),
@@ -755,9 +753,10 @@ init_nodes([Node | Nodes], File, Line) ->
 	pang ->
 	    [Name, Host] = node_to_name_and_host(Node),
 	    case node_start_link(Host, Name) of
-		{ok, Node1} ->
+		{ok, Peer1, Node1} ->
 		    Path = code:get_path(),
 		    true = rpc:call(Node1, code, set_path, [Path]),
+            ok = persistent_term:put({peer, Node1}, Peer1),
 		    [Node1 | init_nodes(Nodes, File, Line)];
 		Other ->
 		    ?skip("Test case (~p(~p)) ignored: cannot start node ~p: ~p~n",
@@ -1097,19 +1096,5 @@ sort(W) ->
 get_ext_test_server_name() ->
     list_to_atom("ext_test_server_" ++ atom_to_list(node())).
 
-pause_node(Node) ->
-    Pid = rpc:call(Node, os, getpid, []),
-    try
-        os:cmd("kill -s STOP " ++ Pid, #{exception_on_failure => true}),
-        {ok, Pid}
-    catch _:Reason:_ ->
-            {error, Reason}
-    end.
-
-resume_node(Pid) ->
-    try
-        os:cmd("kill -s CONT " ++ Pid, #{exception_on_failure => true}),
-        ok
-    catch _:Reason:_ ->
-        {error, Reason}
-    end.
+get_peer_ref(Node) ->
+    persistent_term:get({peer, Node}).
