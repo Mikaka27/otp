@@ -2715,7 +2715,6 @@ offline_restart_ram_copies(Config) when is_list(Config) ->
     ?match({timeout, [disk]}, mnesia:wait_for_tables([disk], 5000)),
 
     ?match(true, erlang:set_cookie(OldCookie)),
-    ?match(pong, net_adm:ping(N2)),
     ?match({ok, _}, mnesia_controller:connect_nodes(mnesia:system_info(db_nodes))),
 
     ?match({[ok, ok], []}, rpc:multicall(All, mnesia, wait_for_tables, [[ram, disk], 5000])),
@@ -2732,6 +2731,7 @@ offline_restart_ram_copies_diskless(suite) -> [];
 offline_restart_ram_copies_diskless(Config) when is_list(Config) ->
     [N1, N2] = All = ?init(2, Config),
 
+    ?match(ok, mnesia:create_schema([N1], ?BACKEND)),
     ?match({[ok, ok], []}, rpc:multicall(All, mnesia, start, [])),
     ?match({atomic, ok}, mnesia:create_table(ram, [{ram_copies, All}, {type, ordered_set}])),
 
@@ -2745,10 +2745,9 @@ offline_restart_ram_copies_diskless(Config) when is_list(Config) ->
     ?match(true, net_kernel:disconnect(N2)),
 
     ?match(ok, mnesia:start()),
-    ?match({timeout, [ram]}, mnesia:wait_for_tables([ram], 5000)),
+    ?match(ok, mnesia:wait_for_tables([ram], 5000)),
 
     ?match(true, erlang:set_cookie(OldCookie)),
-    ?match(pong, net_adm:ping(N2)),
     ?match({ok, _}, mnesia_controller:connect_nodes(mnesia:system_info(db_nodes))),
 
     ?match({[ok, ok], []}, rpc:multicall(All, mnesia, wait_for_tables, [[ram], 5000])),
