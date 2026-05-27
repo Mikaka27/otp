@@ -2715,6 +2715,7 @@ offline_restart_ram_copies(Config) when is_list(Config) ->
     ?match({timeout, [disk]}, mnesia:wait_for_tables([disk], 5000)),
 
     ?match(true, erlang:set_cookie(OldCookie)),
+    ?match(pong, net_adm:ping(N2)),
     ?match({ok, _}, mnesia_controller:connect_nodes(mnesia:system_info(db_nodes))),
 
     ?match({[ok, ok], []}, rpc:multicall(All, mnesia, wait_for_tables, [[ram, disk], 5000])),
@@ -2731,37 +2732,31 @@ offline_restart_ram_copies_diskless(suite) -> [];
 offline_restart_ram_copies_diskless(Config) when is_list(Config) ->
     [N1, N2] = All = ?init(2, Config),
 
-    ?match(ok, mnesia:create_schema([N1], ?BACKEND)),
-    ?match({[ok, ok], []}, rpc:multicall(All, mnesia, start, [])),
+    ?match(ok, mnesia:create_schema([N1])),
+    ?match(ok, mnesia:start()),
+    ?match(ok, rpc:call(N2, mnesia, start, [[{extra_db_nodes, [N1]}]])),
     ?match({atomic, ok}, mnesia:create_table(ram, [{ram_copies, All}, {type, ordered_set}])),
 
     N = 10,
     ?match(ok, mnesia:sync_dirty(fun() ->
         [mnesia:write({ram, K, K}) || K <- lists:seq(1, N)], ok end)),
 
-    % P2 = mnesia_test_lib:get_peer_ref(N2),
-    % ?match(ok, peer:call(P2, mnesia, wait_for_tables, [[ram], 4000])),
+    ?match([], mnesia_test_lib:kill_mnesia([N1])),
+    OldCookie = erlang:get_cookie(),
+    ?match(true, erlang:set_cookie(invalid_cookie)),
+    ?match(true, net_kernel:disconnect(N2)),
+
+    ?match(ok, mnesia:start()),
+    ?match(ok, mnesia:wait_for_tables([ram], 5000)),
+
+    ?match(true, erlang:set_cookie(OldCookie)),
+    ?match(pong, net_adm:ping(N2)),
+    ?match({ok, _}, mnesia_controller:connect_nodes(mnesia:system_info(db_nodes))),
+
     ?match({[ok, ok], []}, rpc:multicall(All, mnesia, wait_for_tables, [[ram], 5000])),
-    ok.
-    % ?match([], mnesia_test_lib:kill_mnesia([N1])),
-    % ?match(ok, peer:call(P2, mnesia, wait_for_tables, [[ram], 4000])),
-    % OldCookie = erlang:get_cookie(),
-    % ?match(true, erlang:set_cookie(invalid_cookie)),
-    % ?match(true, net_kernel:disconnect(N2)),
 
-    % ?match(running, peer:get_state(P2)),
-    % ?match(ok, peer:call(P2, mnesia, wait_for_tables, [[ram], 4000])),
+    RamPat = [{{ram, '_', '_'}, [], ['$_']}],
 
-    % ?match(ok, mnesia:start()),
-    % ?match(ok, mnesia:wait_for_tables([ram], 5000)),
-
-    % ?match(true, erlang:set_cookie(OldCookie)),
-    % ?match({ok, _}, mnesia_controller:connect_nodes(mnesia:system_info(db_nodes))),
-
-    % ?match({[ok, ok], []}, rpc:multicall(All, mnesia, wait_for_tables, [[ram], 5000])),
-
-    % RamPat = [{{ram, '_', '_'}, [], ['$_']}],
-
-    % ExpectedRam = [{ram, K, K} || K <- lists:seq(1, N)],
-    % ?match({[ExpectedRam, ExpectedRam], []}, rpc:multicall(All, mnesia, dirty_select, [ram, RamPat])).
+    ExpectedRam = [{ram, K, K} || K <- lists:seq(1, N)],
+    ?match({[[], ExpectedRam], []}, rpc:multicall(All, mnesia, dirty_select, [ram, RamPat])).
 
