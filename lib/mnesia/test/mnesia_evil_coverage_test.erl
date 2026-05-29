@@ -53,6 +53,7 @@
          ]).
 
 -export([info_check/8, index_size/1]).
+-export([get_collected_traces/0, trace_collector_loop/1]).
 
 -define(init(N, Config),
         mnesia_test_lib:prepare_test_case([{init_test_case, [mnesia]},
@@ -2710,6 +2711,10 @@ offline_restart_ram_copies(Config) when is_list(Config) ->
     ?match(true, erlang:set_cookie(invalid_cookie)),
     ?match(true, net_kernel:disconnect(N2)),
 
+    %% Set up traces on both nodes - use peer connection for N2 since it's disconnected
+    %% setup_controller_traces([N1]),
+    %% setup_controller_traces_via_peer(N2),
+
     ?match(ok, mnesia:start()),
     ?match({timeout, [ram]}, mnesia:wait_for_tables([ram], 5000)),
     ?match({timeout, [disk]}, mnesia:wait_for_tables([disk], 5000)),
@@ -2719,6 +2724,10 @@ offline_restart_ram_copies(Config) when is_list(Config) ->
     ?match({ok, _}, mnesia_controller:connect_nodes(mnesia:system_info(db_nodes))),
 
     ?match({[ok, ok], []}, rpc:multicall(All, mnesia, wait_for_tables, [[ram, disk], 5000])),
+
+    %% Collect and print traces
+    %% collect_controller_traces([N1]),
+    %% collect_controller_traces_via_peer(N2),
 
     RamPat = [{{ram, '_', '_'}, [], ['$_']}],
     DiskPat = [{{disk, '_', '_'}, [], ['$_']}],
@@ -2741,22 +2750,127 @@ offline_restart_ram_copies_diskless(Config) when is_list(Config) ->
     ?match(ok, mnesia:sync_dirty(fun() ->
         [mnesia:write({ram, K, K}) || K <- lists:seq(1, N)], ok end)),
 
+    io:fwrite("Killing mnesia on: ~p~n", [N1]),
     ?match([], mnesia_test_lib:kill_mnesia([N1])),
     OldCookie = erlang:get_cookie(),
     ?match(true, erlang:set_cookie(invalid_cookie)),
+    io:fwrite("Disconnecting ~p from ~p~n", [N1, N2]),
     ?match(true, net_kernel:disconnect(N2)),
 
+    timer:sleep(10000),
+    %% Set up traces on both nodes - use peer connection for N2 since it's disconnected
+    %% setup_controller_traces([N1]),
+    %% setup_controller_traces_via_peer(N2),
+
+    io:fwrite("Starting mnesia on: ~p~n", [N1]),
     ?match(ok, mnesia:start()),
     ?match(ok, mnesia:wait_for_tables([ram], 5000)),
 
+    io:fwrite("Reconnecting ~p with ~p~n", [N1, N2]),
     ?match(true, erlang:set_cookie(OldCookie)),
     ?match(pong, net_adm:ping(N2)),
     ?match({ok, _}, mnesia_controller:connect_nodes(mnesia:system_info(db_nodes))),
 
     ?match({[ok, ok], []}, rpc:multicall(All, mnesia, wait_for_tables, [[ram], 5000])),
 
+    %% Collect and print traces
+    %% collect_controller_traces([N1]),
+    %% collect_controller_traces_via_peer(N2),
+
     RamPat = [{{ram, '_', '_'}, [], ['$_']}],
 
     ExpectedRam = [{ram, K, K} || K <- lists:seq(1, N)],
     ?match({[[], ExpectedRam], []}, rpc:multicall(All, mnesia, dirty_select, [ram, RamPat])).
+
+
+%% --- Trace helpers for debugging adopt_orphans / orphan_tables interaction ---
+
+controller_trace_fun() ->
+    fun() ->
+        Collector = spawn(fun() -> trace_collector_loop([]) end),
+        register(mnesia_trace_collector, Collector),
+        dbg:tracer(process, {fun(Msg, Acc) ->
+            mnesia_trace_collector ! {trace_msg, Msg},
+            Acc
+        end, ok}),
+        dbg:p(all, [c]),
+        Tpls = [
+            dbg:tpl(mnesia_controller, handle_cast, 2,
+                    [{[{im_running, '$1', '$2'}, '_'], [],
+                      [{message, {{recv_im_running, '$1', '$2'}}}]},
+                     {[{adopt_orphans, '$1', '$2'}, '_'], [],
+                      [{message, {{recv_adopt_orphans, '$1', '$2'}}}]}]),
+            dbg:tpl(mnesia_controller, im_running, 2,
+                    [{['$1', '$2'], [],
+                      [{message, {{send_im_running, '$1', '$2'}}}]}]),
+            dbg:tpl(mnesia_controller, abcast, 2,
+                    [{['$1', '$2'], [],
+                      [{message, {{abcast, '$1', '$2'}}}]}]),
+            dbg:tpl(mnesia_controller, try_merge_schema, 3,
+                    [{['$1', '$2', '_'], [],
+                      [{message, {{try_merge_schema, '$1', '$2'}}}]}]),
+            dbg:tpl(mnesia_controller, orphan_tables, 5,
+                    [{['$1', '$2', '$3', '$4', '$5'], [],
+                      [{message, {{orphan_tables, '$1', '$2', '$3', '$4', '$5'}}}]}]),
+            dbg:tpl(mnesia_controller, last_consistent_replica, 2,
+                    [{['$1', '_'], [], [{return_trace}]}]),
+            dbg:tpl(mnesia_controller, initial_safe_loads, 0,
+                    [{[], [], [{return_trace}]}])
+        ],
+        lists:foreach(fun
+            ({ok, List}) when is_list(List) ->
+                case [N || {matched, _, N} <- List, N > 0] of
+                    [_|_] -> ok;
+                    [] -> error({trace_setup_failed_no_match, List})
+                end;
+            (Res) -> error({trace_setup_failed, Res})
+        end, Tpls),
+        ok
+    end.
+
+trace_collector_loop(Acc) ->
+    receive
+        {trace_msg, Msg} ->
+            trace_collector_loop([{erlang:monotonic_time(millisecond), Msg} | Acc]);
+        {get_traces, From} ->
+            From ! {traces, lists:reverse(Acc)},
+            trace_collector_loop(Acc)
+    end.
+
+get_collected_traces() ->
+    mnesia_trace_collector ! {get_traces, self()},
+    receive {traces, T} -> T after 5000 -> [] end.
+
+setup_controller_traces(Nodes) ->
+    F = controller_trace_fun(),
+    [rpc:call(N, erlang, apply, [F, []]) || N <- Nodes],
+    ok.
+
+setup_controller_traces_via_peer(Node) ->
+    Peer = mnesia_test_lib:get_peer_ref(Node),
+    F = controller_trace_fun(),
+    peer:call(Peer, erlang, apply, [F, []]),
+    ok.
+
+collect_controller_traces(Nodes) ->
+    timer:sleep(500),
+    lists:foreach(fun(N) ->
+        Traces = rpc:call(N, ?MODULE, get_collected_traces, []),
+        rpc:call(N, dbg, stop_clear, []),
+        ct:pal("=== Traces from ~p (~p entries) ===~n~s",
+               [N, length(Traces), format_traces(Traces)])
+    end, Nodes).
+
+collect_controller_traces_via_peer(Node) ->
+    timer:sleep(500),
+    Peer = mnesia_test_lib:get_peer_ref(Node),
+    Traces = peer:call(Peer, ?MODULE, get_collected_traces, []),
+    peer:call(Peer, dbg, stop_clear, []),
+    ct:pal("=== Traces from ~p via peer (~p entries) ===~n~s",
+           [Node, length(Traces), format_traces(Traces)]).
+
+format_traces(Traces) ->
+    lists:flatten([io_lib:format("  [~p] ~p~n", [T, Msg]) || {T, Msg} <- Traces]).
+
+
 

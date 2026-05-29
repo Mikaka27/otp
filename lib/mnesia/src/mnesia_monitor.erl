@@ -822,8 +822,11 @@ detect_inconcistency([], _Context) ->
     ok;
 detect_inconcistency(Nodes, Context) ->
     Downs = [N || N <- Nodes, mnesia_recover:has_mnesia_down(N)],
-    {Replies, _BadNodes} =
+    {Replies, BadNodes} =
 	rpc:multicall(Downs, ?MODULE, has_remote_mnesia_down, [node()]),
+    io:fwrite("~s ~p detect_inconcistency nodes=~p context=~p downs=~p replies=~p bad_nodes=~p~n",
+              [calendar:system_time_to_rfc3339(erlang:system_time(millisecond), [{unit, millisecond}]),
+               node(), Nodes, Context, Downs, Replies, BadNodes]),
     report_inconsistency(Replies, Context, ok).
 
 has_remote_mnesia_down(Node) ->

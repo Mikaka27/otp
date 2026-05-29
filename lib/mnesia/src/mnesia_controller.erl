@@ -521,6 +521,7 @@ default_merge(F) ->
     F([]).
 
 try_merge_schema(Nodes, Told0, UserFun) ->
+    io:fwrite("~s ~p try_merge_schema nodes=~p told=~p~n", [calendar:system_time_to_rfc3339(erlang:system_time(millisecond), [{unit, millisecond}]), node(), Nodes, Told0]),
     case mnesia_schema:merge_schema(UserFun) of
 	{atomic, not_merged} ->
 	    %% No more nodes that we need to merge the schema with
@@ -556,6 +557,7 @@ try_merge_schema(Nodes, Told0, UserFun) ->
     end.
 
 im_running(OldFriends, NewFriends) ->
+    io:fwrite("~s ~p send_im_running old=~p new=~p~n", [calendar:system_time_to_rfc3339(erlang:system_time(millisecond), [{unit, millisecond}]), node(), OldFriends, NewFriends]),
     abcast(OldFriends, {im_running, node(), NewFriends}).
 
 schema_is_merged() ->
@@ -582,6 +584,7 @@ cast(Msg) ->
     end.
 
 abcast(Nodes, Msg) ->
+    io:fwrite("~s ~p abcast nodes=~p msg=~p~n", [calendar:system_time_to_rfc3339(erlang:system_time(millisecond), [{unit, millisecond}]), node(), Nodes, Msg]),
     gen_server:abcast(Nodes, ?SERVER_NAME, Msg).
 
 call(Msg) ->
@@ -1022,6 +1025,7 @@ handle_cast(Msg, State) when State#state.schema_is_merged /= true ->
 %% might trigger a table load from wrong nodes as a result of that we don't
 %% know which tables we can load safely first.
 handle_cast({im_running, Node, NewFriends}, State) ->
+    io:fwrite("~s ~p recv_im_running from=~p friends=~p~n", [calendar:system_time_to_rfc3339(erlang:system_time(millisecond), [{unit, millisecond}]), node(), Node, NewFriends]),
     LocalTabs = mnesia_lib:local_active_tables() -- [schema],
     RemoveLocalOnly = fun(Tab) -> not val({Tab, local_content}) end,
     Tabs = lists:filter(RemoveLocalOnly, LocalTabs),
@@ -1093,6 +1097,7 @@ handle_cast({master_nodes_updated, Tab, Masters}, State) ->
     end;
 
 handle_cast({adopt_orphans, Node, Tabs}, State) ->
+    io:fwrite("~s ~p recv_adopt_orphans from=~p tabs=~p~n", [calendar:system_time_to_rfc3339(erlang:system_time(millisecond), [{unit, millisecond}]), node(), Node, Tabs]),
     State2 = node_has_tabs(Tabs, Node, State),
 
     case ?catch_val({node_up,Node}) of
@@ -1108,6 +1113,7 @@ handle_cast({adopt_orphans, Node, Tabs}, State) ->
 	    Nodes = val({current, db_nodes}),
 	    {LocalOrphans, RemoteMasters} =
 		orphan_tables(LocalTabs, Node, Nodes, [], []),
+	    io:fwrite("~s ~p orphan_tables result local=~p remote=~p~n", [calendar:system_time_to_rfc3339(erlang:system_time(millisecond), [{unit, millisecond}]), node(), LocalOrphans, RemoteMasters]),
 	    Reason = {adopt_orphan, node()},
 	    mnesia_late_loader:async_late_disc_load(node(), LocalOrphans, Reason),
 
@@ -1441,6 +1447,8 @@ inactive_copy_holders(Tab, Node) ->
     end.
 
 orphan_tables([Tab | Tabs], Node, Ns, Local, Remote) ->
+    io:fwrite("~s ~p orphan_tables tab=~p node=~p ns=~p local=~p remote=~p~n",
+              [calendar:system_time_to_rfc3339(erlang:system_time(millisecond), [{unit, millisecond}]), node(), Tab, Node, Ns, Local, Remote]),
     Cs = val({Tab, cstruct}),
     CopyHolders = mnesia_lib:copy_holders(Cs),
     RamCopyHolders = Cs#cstruct.ram_copies,
@@ -1621,12 +1629,16 @@ initial_safe_loads() ->
 	dbg_out("mnesia_downs = ~p~n", [Downs]),
 	Tabs = val({schema, local_tables}) -- [schema],
 	LastC = fun(T) -> last_consistent_replica(T, Downs) end,
-	lists:zf(LastC, Tabs).
+	Res = lists:zf(LastC, Tabs),
+	io:fwrite("~s ~p initial_safe_loads -> ~p~n", [calendar:system_time_to_rfc3339(erlang:system_time(millisecond), [{unit, millisecond}]), node(), Res]),
+	Res.
 
 last_consistent_replica(Tab, Downs) ->
     case ?catch_val({Tab, cstruct}) of
         #cstruct{} = Cs ->
-            last_consistent_replica(Cs, Tab, Downs);
+            Res = last_consistent_replica(Cs, Tab, Downs),
+            io:fwrite("~s ~p last_consistent_replica tab=~p -> ~p~n", [calendar:system_time_to_rfc3339(erlang:system_time(millisecond), [{unit, millisecond}]), node(), Tab, Res]),
+            Res;
         _ ->
             false
     end.
