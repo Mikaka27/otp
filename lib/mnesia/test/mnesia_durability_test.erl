@@ -47,7 +47,9 @@
          master_on_non_local_tables/1,
          remote_force_load_with_local_master_node/1,
          master_node_with_ram_copy_2/1, master_node_with_ram_copy_3/1,
-         dump_ram_copies/1, dump_disc_copies/1, dump_disc_only/1]).
+         dump_ram_copies/1, dump_disc_copies/1, dump_disc_only/1,
+         force_load_disc_copies_when_network_down/1,
+         force_load_disc_only_copies_when_network_down/1]).
 
 -include("mnesia_test_lib.hrl").
 
@@ -85,7 +87,9 @@ groups() ->
        force_load_when_we_has_loaded,
        force_load_on_a_non_local_table,
        force_load_when_the_table_does_not_exist,
-       {group, load_tables_with_master_tables}]},
+       {group, load_tables_with_master_tables},
+       force_load_disc_copies_when_network_down,
+       force_load_disc_only_copies_when_network_down]},
      {late_load_when_all_are_ram_copies_on_ram_nodes, [],
       [late_load_all_ram_cs_ram_nodes1,
        late_load_all_ram_cs_ram_nodes2]},
@@ -1539,6 +1543,61 @@ check_values([]) -> [];
 check_values([{Tab,Key}|Rest]) ->
         Ret = lists:sort(mnesia:dirty_read({Tab,Key})),
         [Ret|check_values(Rest)].
+
+force_load_disc_copies_when_network_down(Config) ->
+    StartSeconds = calendar:datetime_to_gregorian_seconds(calendar:local_time()),
+    force_load_table_when_network_down_loop(Config, disc_copies, ?FUNCTION_NAME, 1_000_000, false, StartSeconds).
+
+force_load_disc_only_copies_when_network_down(Config) ->
+    StartSeconds = calendar:datetime_to_gregorian_seconds(calendar:local_time()),
+    force_load_table_when_network_down_loop(Config, disc_only_copies, ?FUNCTION_NAME, 500_000, true, StartSeconds).
+
+force_load_table_when_network_down_loop(Config, Storage, Table, NumRecords, Sleep, StartSeconds) ->
+    CurrentSeconds = calendar:datetime_to_gregorian_seconds(calendar:local_time()),
+    case (CurrentSeconds - StartSeconds) >= 600 of
+        true ->
+            ok;
+        false ->
+            [_Node1, Node2] = Nodes = ?acquire_nodes(2, Config),
+            Populate = fun(F, N) when N > 0 ->
+                               mnesia:write({Table, N, []}),
+                               F(F, N - 1);
+                          (_F, _N) ->
+                               ok
+                       end,
+
+            ?match({atomic, ok}, mnesia:create_table(Table, [{disc_copies, Nodes}])),
+            ?match({atomic, ok}, mnesia:transaction(fun() -> Populate(Populate, NumRecords) end)),
+            ?match(ok, mnesia:set_master_nodes([Node2])),
+            ?match(stopped, mnesia:stop()),
+            ?match(ok, mnesia:start()),
+            OldCookie = erlang:get_cookie(),
+            ?match(true, erlang:set_cookie(invalid_cookie)),
+            try
+                ?match(true, net_kernel:disconnect(Node2)),
+                ?match({timeout, [Table]}, mnesia:wait_for_tables([Table], 0)),
+                ?match(pang, net_adm:ping(Node2)),
+                Sleep andalso timer:sleep(timer:seconds(1)),
+                {Pid, Ref} = spawn_monitor(fun() -> yes = mnesia:force_load_table(Table) end),
+                receive
+                    {'DOWN', Ref, process, Pid, _} ->
+                        ok
+                after timer:seconds(15) ->
+                        case Sleep of
+                            true ->
+                                ct:fail("Pid: ~p stuck in:~n~p~n",
+                                        [Pid, [process_info(dets_server:get_pid(case2), K) ||
+                                                  K <- [monitored_by, current_stacktrace]]]);
+                            false ->
+                                ct:fail("Pid: ~p stuck in:~n~p~n",
+                                        [Pid, process_info(Pid, current_stacktrace)])
+                        end
+                end
+            after
+                ?match(true, erlang:set_cookie(OldCookie))
+            end,
+            force_load_table_when_network_down_loop(Config, Storage, Table, NumRecords, Sleep, StartSeconds)
+    end.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %
