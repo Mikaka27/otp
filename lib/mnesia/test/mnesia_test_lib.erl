@@ -299,7 +299,9 @@ node_start_link(Host, Name, Retries) ->
              "-pa", filename:dirname(code:which(mnesia))],
     Args = case has_network_blocker() of
                true ->
-                   Args0 ++ ?NETWORK_BLOCKER_DIST_OPTS;
+                   ?NETWORK_BLOCKER_DIST_OPTS ++
+                       Args0 ++
+                       ["-pz", filename:dirname(code:which(gen_tcp_blocking_dist))];
                false ->
                    Args0
            end,
@@ -309,6 +311,7 @@ node_start_link(Host, Name, Retries) ->
 	    {ok, Cwd} = file:get_cwd(),
 	    Path = code:get_path(),
 	    ok = rpc:call(NewNode, file, set_cwd, [Cwd]),
+        ct:pal("Path: ~p~n", [Path]),
 	    true = rpc:call(NewNode, code, set_path, [Path]),
 	    ok = rpc:call(NewNode, error_logger, tty, [false]),
 	    spawn_link(NewNode, ?MODULE, node_sup, []),

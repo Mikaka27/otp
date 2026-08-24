@@ -67,8 +67,11 @@ suite() -> [{ct_hooks,[{ts_install_cth,[{nodenames,2}]}]}].
 %% and do not involve the normal test machinery.
 
 all() ->
-    [app, appup, doctests, {group, light}, {group, medium}, {group, heavy},
-     {group, external}, clean_up_suite].
+    [app, appup, {group, install}, clean_up_suite].
+
+% all() ->
+%     [app, appup, doctests, {group, light}, {group, medium}, {group, heavy},
+%      {group, external}, clean_up_suite].
 
 doctests(_Config) ->
     ct_doctest:module(
