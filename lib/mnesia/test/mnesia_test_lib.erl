@@ -299,31 +299,29 @@ node_start_link(Host, Name, Retries) ->
              "-pa", filename:dirname(code:which(mnesia))],
     Args = case has_network_blocker() of
                true ->
-                   ?NETWORK_BLOCKER_DIST_OPTS ++
-                       Args0 ++
-                       ["-pz", filename:dirname(code:which(gen_tcp_blocking_dist))];
+                   ?NETWORK_BLOCKER_DIST_OPTS ++ Args0;
                false ->
                    Args0
            end,
     case starter(Host, Name, Args) of
-	{ok, NewNode} ->
-	    ?match(pong, net_adm:ping(NewNode)),
-	    {ok, Cwd} = file:get_cwd(),
-	    Path = code:get_path(),
-	    ok = rpc:call(NewNode, file, set_cwd, [Cwd]),
-        ct:pal("Path: ~p~n", [Path]),
-	    true = rpc:call(NewNode, code, set_path, [Path]),
-	    ok = rpc:call(NewNode, error_logger, tty, [false]),
-	    spawn_link(NewNode, ?MODULE, node_sup, []),
-	    rpc:multicall([node() | nodes()], global, sync, []),
-	    {ok, NewNode};
-	{error, Reason} when Retries == 0->
-	    {error, Reason};
-	{error, Reason} ->
-	    io:format("Could not start node ~p ~p retrying~n",
-		      [{Host, Name, Args}, Reason]),
-	    timer:sleep(500),
-	    node_start_link(Host, Name, Retries - 1)
+        {ok, NewNode} ->
+            ?match(pong, net_adm:ping(NewNode)),
+            {ok, Cwd} = file:get_cwd(),
+            Path0 = code:get_path(),
+            Path = lists:filter(fun filelib:is_dir/1, Path0),
+            ok = rpc:call(NewNode, file, set_cwd, [Cwd]),
+            true = rpc:call(NewNode, code, set_path, [Path]),
+            ok = rpc:call(NewNode, error_logger, tty, [false]),
+            spawn_link(NewNode, ?MODULE, node_sup, []),
+            rpc:multicall([node() | nodes()], global, sync, []),
+            {ok, NewNode};
+        {error, Reason} when Retries == 0->
+            {error, Reason};
+        {error, Reason} ->
+            io:format("Could not start node ~p ~p retrying~n",
+                      [{Host, Name, Args}, Reason]),
+            timer:sleep(500),
+            node_start_link(Host, Name, Retries - 1)
     end.
 
 starter(Host, Name, Args) ->
