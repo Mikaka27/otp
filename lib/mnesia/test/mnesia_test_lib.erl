@@ -309,16 +309,18 @@ node_start_link(Host, Name, Retries) ->
             {ok, Cwd} = file:get_cwd(),
             ct:pal("~n=== node_start_link debug (~p) ===~n"
                    "  CWD: ~ts", [NewNode, Cwd]),
-            Path = code:get_path(),
-            % Path = lists:filter(fun filelib:is_dir/1, Path0),
+            Path0 = code:get_path(),
+            ct:pal("Path0: ~p~n", [Path0]),
             lists:foreach(
                 fun(Dir) ->
                     Exists = filelib:is_dir(Dir),
                     ct:pal("  PATH dir: ~ts  exists=~p", [Dir, Exists])
-                end, Path),
+                end, Path0),
             ct:pal("=== end debug ==="),
+            Path = lists:filter(fun filelib:is_dir/1, Path0),
+            ct:pal("Path: ~p~n", [Path]),
             ok = rpc:call(NewNode, file, set_cwd, [Cwd]),
-            true = rpc:call(NewNode, code, set_path, [Path]),
+            true = trace_set_path(NewNode, Path),
             ok = rpc:call(NewNode, error_logger, tty, [false]),
             spawn_link(NewNode, ?MODULE, node_sup, []),
             rpc:multicall([node() | nodes()], global, sync, []),
@@ -342,6 +344,86 @@ node_sup() ->
     receive
 	{'EXIT', _, _} ->
 	    ignore
+    end.
+
+trace_set_path(Node, Path) ->
+    %% Execute all tracing on the remote node in one call to avoid
+    %% session reference GC issues when round-tripping through rpc
+    Res = rpc:call(Node, erlang, apply, [fun() ->
+        Collector = self(),
+        Tracer = spawn_link(fun F() ->
+            receive
+                {trace, Pid, call, MFA} ->
+                    Collector ! {trace_msg, {call, Pid, MFA}},
+                    F();
+                {trace, Pid, return_from, MFA, RetVal} ->
+                    Collector ! {trace_msg, {return_from, Pid, MFA, RetVal}},
+                    F();
+                {trace, Pid, exception_from, MFA, {Class, Reason}} ->
+                    Collector ! {trace_msg, {exception_from, Pid, MFA, Class, Reason}},
+                    F();
+                stop ->
+                    ok;
+                Other ->
+                    Collector ! {trace_msg, {unexpected, Other}},
+                    F()
+            end
+        end),
+        Session = trace:session_create(mnesia_test_trace, Tracer, []),
+
+        MatchSpec = [{'_', [], [{return_trace}, {exception_trace}]}],
+
+        SetupResults = [
+            {process_all, trace:process(Session, all, true, [call])},
+            {code_set_path_1, trace:function(Session, {code, set_path, 1}, MatchSpec, [local])},
+            {code_set_path_2, trace:function(Session, {code, set_path, 2}, MatchSpec, [local])},
+            {code_server_set_path_5, trace:function(Session, {code_server, set_path, 5}, MatchSpec, [local])},
+            {code_server_check_path_1, trace:function(Session, {code_server, check_path, 1}, MatchSpec, [local])},
+            {code_server_do_check_path_4, trace:function(Session, {code_server, do_check_path, 4}, MatchSpec, [local])},
+            {code_server_is_dir_1, trace:function(Session, {code_server, is_dir, 1}, MatchSpec, [local])},
+            {erl_prim_loader_read_file_info_1, trace:function(Session, {erl_prim_loader, read_file_info, 1}, MatchSpec, [local])}
+        ],
+
+        %% Call code:set_path
+        SetPathRes = code:set_path(Path),
+
+        %% Collect trace messages
+        timer:sleep(500),
+        TraceMessages = collect_trace_msgs([]),
+
+        %% Cleanup
+        trace:session_destroy(Session),
+        Tracer ! stop,
+
+        {SetPathRes, SetupResults, TraceMessages}
+    end, []]),
+
+    case Res of
+        {SetPathRes, SetupResults, TraceMessages} ->
+            ct:pal("*** [~p] trace_set_path setup results: ~p",
+                   [Node, SetupResults]),
+            lists:foreach(fun(Msg) ->
+                ct:pal("*** [~p] TRACE: ~p", [Node, Msg])
+            end, TraceMessages),
+            ct:pal("*** [~p] code:set_path result: ~p (path length: ~p)",
+                   [Node, SetPathRes, length(Path)]),
+            case SetPathRes of
+                true -> true;
+                Other ->
+                    error({code_set_path_failed, Node, Other})
+            end;
+        {badrpc, Reason} ->
+            ct:pal("*** [~p] trace_set_path BADRPC: ~p ***",
+                   [Node, Reason]),
+            error({code_set_path_failed, Node, {badrpc, Reason}})
+    end.
+
+collect_trace_msgs(Acc) ->
+    receive
+        {trace_msg, Msg} ->
+            collect_trace_msgs([Msg | Acc])
+    after 0 ->
+        lists:reverse(Acc)
     end.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -836,7 +918,7 @@ init_nodes([Node | Nodes], File, Line) ->
 	    case node_start_link(Host, Name) of
 		{ok, Node1} ->
 		    Path = code:get_path(),
-		    true = rpc:call(Node1, code, set_path, [Path]),
+		    true = trace_set_path(Node1, Path),
 		    [Node1 | init_nodes(Nodes, File, Line)];
 		Other ->
 		    ?skip("Test case (~p(~p)) ignored: cannot start node ~p: ~p~n",
