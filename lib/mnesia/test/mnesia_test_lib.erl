@@ -307,8 +307,16 @@ node_start_link(Host, Name, Retries) ->
         {ok, NewNode} ->
             ?match(pong, net_adm:ping(NewNode)),
             {ok, Cwd} = file:get_cwd(),
-            Path0 = code:get_path(),
-            Path = lists:filter(fun filelib:is_dir/1, Path0),
+            ct:pal("~n=== node_start_link debug (~p) ===~n"
+                   "  CWD: ~ts", [NewNode, Cwd]),
+            Path = code:get_path(),
+            % Path = lists:filter(fun filelib:is_dir/1, Path0),
+            lists:foreach(
+                fun(Dir) ->
+                    Exists = filelib:is_dir(Dir),
+                    ct:pal("  PATH dir: ~ts  exists=~p", [Dir, Exists])
+                end, Path),
+            ct:pal("=== end debug ==="),
             ok = rpc:call(NewNode, file, set_cwd, [Cwd]),
             true = rpc:call(NewNode, code, set_path, [Path]),
             ok = rpc:call(NewNode, error_logger, tty, [false]),
