@@ -121,7 +121,10 @@ ERL_NIF_TERM mod_exp_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
         goto err;
     if ((bn_ctx = BN_CTX_new()) == NULL)
         goto err;
-
+    if (BN_is_odd(bn_modulo)) {
+        // Openssl only supports BN_FLG_CONSTTIME for odd modulo
+        BN_set_flags(bn_exponent, BN_FLG_CONSTTIME);
+    }
     if (!BN_mod_exp(bn_result, bn_base, bn_exponent, bn_modulo, bn_ctx))
         goto err;
 
