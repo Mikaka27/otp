@@ -4,7 +4,7 @@
 -export([curve/1, curves/0, curve_with_name/1]).
 
 curves() ->
-    proplists:get_value(curves,  crypto:supports()) -- [x25519,x448].
+    proplists:get_value(curves,  crypto:supports()) -- [x25519,x448,ed25519,ed448].
 
 real_name(secp192r1) -> prime192v1;
 real_name(secp256r1) -> prime256v1;
