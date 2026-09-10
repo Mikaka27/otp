@@ -424,7 +424,7 @@ static int get_pkey_public_key(ErlNifEnv *env,
 
         password = get_key_password(env, argv[key_arg_num]);
         *pkey = ENGINE_load_public_key(e, id, NULL, password);
-        if (!pkey)
+        if (!*pkey)
             assign_goto(*err_return, err, EXCP_BADARG_N(env, key_arg_num, "Couldn't get public key from engine"));
 #else
         assign_goto(*err_return, err, EXCP_BADARG_N(env, key_arg_num, "No engine support"));
