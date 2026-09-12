@@ -406,10 +406,9 @@ groups() ->
                                  generate,
                                  privkey_to_pubkey
                                 ]},
-     {dss,                  [], [sign_verify
+     {dss,                  [], [sign_verify,
                                  %% Does not work yet:  ,public_encrypt, private_encrypt
-                                 %% dsa seem to always have been given bad result. Must fix:
-                                 %%      ,privkey_to_pubkey
+                                 privkey_to_pubkey
                                 ]},
      {ecdsa,                [], [sign_verify, use_all_ec_sign_verify
                                  %% Does not work yet:  ,public_encrypt, private_encrypt

@@ -106,29 +106,47 @@ err:
 }
 
 
-int dss_privkey_to_pubkey(ErlNifEnv* env, EVP_PKEY *pkey, ERL_NIF_TERM *ret)
+int dss_privkey_to_pubkey(ErlNifEnv* env, EVP_PKEY *pkey, ERL_NIF_TERM *res)
 // HAS_3_0_API
 {
     ERL_NIF_TERM result[4];
-    BIGNUM *p = NULL, *q = NULL, *g = NULL, *pub = NULL;
+    BIGNUM *p = NULL, *q = NULL, *g = NULL, *pub = NULL, *priv = NULL;
+    BN_CTX *bn_ctx = NULL;
+    int pub_alloc = 0, ret = 0;
 
-    if (
-        !EVP_PKEY_get_bn_param(pkey, "p", &p)
+    if (!EVP_PKEY_get_bn_param(pkey, "p", &p)
         || !EVP_PKEY_get_bn_param(pkey, "q", &q)
-        || !EVP_PKEY_get_bn_param(pkey, "g", &g)
-        || !EVP_PKEY_get_bn_param(pkey, "pub", &pub)
-        || ((result[0] = bin_from_bn(env, p)) == atom_error)
+        || !EVP_PKEY_get_bn_param(pkey, "g", &g))
+        goto out;
+
+    if (!EVP_PKEY_get_bn_param(pkey, "pub", &pub))
+    {
+        if (!EVP_PKEY_get_bn_param(pkey, "priv", &priv))
+            goto out;
+        if ((bn_ctx = BN_CTX_new()) == NULL)
+            goto out;
+        if ((pub = BN_new()) == NULL)
+            goto out;
+        pub_alloc = 1;
+        if (!BN_mod_exp(pub, g, priv, p, bn_ctx))
+            goto out;
+    }
+
+    if (((result[0] = bin_from_bn(env, p)) == atom_error)
         || ((result[1] = bin_from_bn(env, q)) == atom_error)
         || ((result[2] = bin_from_bn(env, g)) == atom_error)
-        || ((result[3] = bin_from_bn(env, pub)) == atom_error)
-        )
-        goto err;
+        || ((result[3] = bin_from_bn(env, pub)) == atom_error))
+        goto out;
 
-    *ret =  enif_make_list_from_array(env, result, 4);
-    return 1;
+    *res =  enif_make_list_from_array(env, result, 4);
+    ret = 1;
 
- err:
-    return 0;
+out:
+    if (pub_alloc && pub)
+        BN_free(pub);
+    if (bn_ctx)
+        BN_CTX_free(bn_ctx);
+    return ret;
 }
 
 # else
@@ -277,35 +295,51 @@ int get_dss_public_key(ErlNifEnv* env, ERL_NIF_TERM key, EVP_PKEY **pkey)
 }
 
 
-int dss_privkey_to_pubkey(ErlNifEnv* env, EVP_PKEY *pkey, ERL_NIF_TERM *ret)
+int dss_privkey_to_pubkey(ErlNifEnv* env, EVP_PKEY *pkey, ERL_NIF_TERM *res)
 {
     ERL_NIF_TERM result[4];
     DSA *dsa = NULL;
-    const BIGNUM *p = NULL, *q = NULL, *g = NULL, *pub_key = NULL;
+    const BIGNUM *p = NULL, *q = NULL, *g = NULL, *pub_key = NULL, *priv_key = NULL;
+    BN_CTX *bn_ctx = NULL;
+    int pub_key_alloc = 0, ret = 0;
 
     if ((dsa = EVP_PKEY_get1_DSA(pkey)) == NULL)
-        goto err;
+        goto out;
 
     DSA_get0_pqg(dsa, &p, &q, &g);
-    DSA_get0_key(dsa, &pub_key, NULL);
+    DSA_get0_key(dsa, &pub_key, &priv_key);
+
+    if (BN_cmp(pub_key, priv_key) == 0)
+    {
+        if ((bn_ctx = BN_CTX_new()) == NULL)
+            goto out;
+        if ((pub_key = BN_new()) == NULL)
+            goto out;
+        pub_key_alloc = 1;
+        if (!BN_mod_exp(pub_key, g, priv_key, p, bn_ctx))
+            goto out;
+    }
 
     if ((result[0] = bin_from_bn(env, p)) == atom_error)
-        goto err;
+        goto out;
     if ((result[1] = bin_from_bn(env, q)) == atom_error)
-        goto err;
+        goto out;
     if ((result[2] = bin_from_bn(env, g)) == atom_error)
-        goto err;
+        goto out;
     if ((result[3] = bin_from_bn(env, pub_key)) == atom_error)
-        goto err;
+        goto out;
 
-    *ret = enif_make_list_from_array(env, result, 4);
-    DSA_free(dsa);
-    return 1;
+    *res = enif_make_list_from_array(env, result, 4);
+    ret = 1;
     
- err:
+ out:
     if (dsa)
         DSA_free(dsa);
-    return 0;
+    if (pub_key_alloc && pub_key)
+        BN_free(pub_key);
+    if (bn_ctx)
+        BN_CTX_free(bn_ctx);
+    return ret;
 }
 
 # endif /* HAS_3_0_API */
