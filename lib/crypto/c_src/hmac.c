@@ -230,12 +230,18 @@ ERL_NIF_TERM hmac_final_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
 
 
 int hmac_low_level(ErlNifEnv* env, const EVP_MD *md,
-                   ErlNifBinary key_bin, ErlNifBinary text,
+                   ErlNifBinary key_bin, int key_bin_arg_num, ErlNifBinary text,
                    ErlNifBinary *ret_bin, int *ret_bin_alloc, ERL_NIF_TERM *return_term)
 {
     unsigned int size_int;
     size_t size;
     unsigned char buff[EVP_MAX_MD_SIZE];
+
+    if (key_bin.size > INT_MAX)
+    {
+        *return_term = EXCP_BADARG_N(env, key_bin_arg_num, "Key size must be no longer than INT_MAX");
+        return 0;
+    }
 
     if (HMAC(md,
              key_bin.data, (int)key_bin.size,
