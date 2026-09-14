@@ -3781,8 +3781,8 @@ bin_to_int(Bin) when is_binary(Bin) ->
 bin_to_int(undefined) ->
     undefined.
 
-map_ensure_int_as_bin([H|_]=List) when is_integer(H) ->
-    lists:map(fun(E) -> int_to_bin(E) end, List);
+map_ensure_int_as_bin(List) when is_list(List) ->
+    lists:map(fun ensure_int_as_bin/1, List);
 map_ensure_int_as_bin(List) ->
     List.
 
