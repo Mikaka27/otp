@@ -112,7 +112,7 @@ int dss_privkey_to_pubkey(ErlNifEnv* env, EVP_PKEY *pkey, ERL_NIF_TERM *res)
     ERL_NIF_TERM result[4];
     BIGNUM *p = NULL, *q = NULL, *g = NULL, *pub = NULL, *priv = NULL;
     BN_CTX *bn_ctx = NULL;
-    int pub_alloc = 0, ret = 0;
+    int ret = 0;
 
     if (!EVP_PKEY_get_bn_param(pkey, "p", &p)
         || !EVP_PKEY_get_bn_param(pkey, "q", &q)
@@ -127,7 +127,6 @@ int dss_privkey_to_pubkey(ErlNifEnv* env, EVP_PKEY *pkey, ERL_NIF_TERM *res)
             goto out;
         if ((pub = BN_new()) == NULL)
             goto out;
-        pub_alloc = 1;
         if (!BN_mod_exp(pub, g, priv, p, bn_ctx))
             goto out;
     }
@@ -142,8 +141,16 @@ int dss_privkey_to_pubkey(ErlNifEnv* env, EVP_PKEY *pkey, ERL_NIF_TERM *res)
     ret = 1;
 
 out:
-    if (pub_alloc && pub)
+    if (p)
+        BN_free(p);
+    if (q)
+        BN_free(q);
+    if (g)
+        BN_free(g);
+    if (pub)
         BN_free(pub);
+    if (priv)
+        BN_free(priv);
     if (bn_ctx)
         BN_CTX_free(bn_ctx);
     return ret;
