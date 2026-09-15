@@ -93,11 +93,11 @@ ERL_NIF_TERM srp_value_B_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]
     if (bn_multiplier)
         BN_free(bn_multiplier);
     if (bn_verifier)
-        BN_free(bn_verifier);
+        BN_clear_free(bn_verifier);
     if (bn_generator)
         BN_free(bn_generator);
     if (bn_exponent)
-        BN_free(bn_exponent);
+        BN_clear_free(bn_exponent);
     if (bn_prime)
         BN_free(bn_prime);
     if (bn_result)
@@ -195,7 +195,7 @@ ERL_NIF_TERM srp_user_secret_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM ar
 
  done:
     if (bn_a)
-        BN_free(bn_a);
+        BN_clear_free(bn_a);
     if (bn_u)
         BN_free(bn_u);
     if (bn_B)
@@ -205,17 +205,17 @@ ERL_NIF_TERM srp_user_secret_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM ar
     if (bn_generator)
         BN_free(bn_generator);
     if (bn_exponent)
-        BN_free(bn_exponent);
+        BN_clear_free(bn_exponent);
     if (bn_prime)
         BN_free(bn_prime);
     if (bn_ctx)
         BN_CTX_free(bn_ctx);
     if (bn_result)
-        BN_free(bn_result);
+        BN_clear_free(bn_result);
     if (bn_base)
-        BN_free(bn_base);
+        BN_clear_free(bn_base);
     if (bn_exp2)
-        BN_free(bn_exp2);
+        BN_clear_free(bn_exp2);
 
     return ret;
 }
@@ -291,9 +291,9 @@ ERL_NIF_TERM srp_host_secret_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM ar
 
  done:
     if (bn_verifier)
-        BN_free(bn_verifier);
+        BN_clear_free(bn_verifier);
     if (bn_b)
-        BN_free(bn_b);
+        BN_clear_free(bn_b);
     if (bn_u)
         BN_free(bn_u);
     if (bn_A)
@@ -303,9 +303,9 @@ ERL_NIF_TERM srp_host_secret_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM ar
     if (bn_ctx)
         BN_CTX_free(bn_ctx);
     if (bn_result)
-        BN_free(bn_result);
+        BN_clear_free(bn_result);
     if (bn_base)
-        BN_free(bn_base);
+        BN_clear_free(bn_base);
 
     return ret;
 }

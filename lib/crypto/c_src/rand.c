@@ -76,7 +76,7 @@ ERL_NIF_TERM strong_rand_range_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM 
 
  done:
     if (bn_rand)
-        BN_free(bn_rand);
+        BN_clear_free(bn_rand);
     if (bn_range)
         BN_free(bn_range);
     return ret;

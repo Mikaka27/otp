@@ -198,17 +198,17 @@ int get_rsa_private_key(ErlNifEnv* env, ERL_NIF_TERM key, EVP_PKEY **pkey)
     if (n)
         BN_free(n);
     if (d)
-        BN_free(d);
+        BN_clear_free(d);
     if (p)
-        BN_free(p);
+        BN_clear_free(p);
     if (q)
-        BN_free(q);
+        BN_clear_free(q);
     if (dmp1)
-        BN_free(dmp1);
+        BN_clear_free(dmp1);
     if (dmq1)
-        BN_free(dmq1);
+        BN_clear_free(dmq1);
     if (iqmp)
-        BN_free(iqmp);
+        BN_clear_free(iqmp);
 
     return 0;
 }
@@ -523,12 +523,12 @@ static ERL_NIF_TERM rsa_generate_key(ErlNifEnv* env, int argc, const ERL_NIF_TER
     local_ret:
         if (e) BN_free(e);
         if (n) BN_free(n);
-        if (d) BN_free(d);
-        if (p) BN_free(p);
-        if (q) BN_free(q);
-        if (dmp1) BN_free(dmp1);
-        if (dmq1) BN_free(dmq1);
-        if (iqmp) BN_free(iqmp);
+        if (d) BN_clear_free(d);
+        if (p) BN_clear_free(p);
+        if (q) BN_clear_free(q);
+        if (dmp1) BN_clear_free(dmp1);
+        if (dmq1) BN_clear_free(dmq1);
+        if (iqmp) BN_clear_free(iqmp);
     }
 
  ret:

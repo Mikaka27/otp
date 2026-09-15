@@ -153,11 +153,11 @@ ERL_NIF_TERM mod_exp_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
     if (bn_base)
         BN_free(bn_base);
     if (bn_exponent)
-        BN_free(bn_exponent);
+        BN_clear_free(bn_exponent);
     if (bn_modulo)
         BN_free(bn_modulo);
     if (bn_result)
-        BN_free(bn_result);
+        BN_clear_free(bn_result);
     if (bn_ctx)
         BN_CTX_free(bn_ctx);
     return ret;
@@ -225,7 +225,8 @@ int get_ossl_BN_param_from_bin_sz(ErlNifEnv* env, char* key, ERL_NIF_TERM bin,
         return 0;
 
     ok = get_ossl_BN_param_from_bn(env, key, bn, dest);
-    BN_free(bn);
+    /* The bn may hold a private key (the "priv" param), so always clear it */
+    BN_clear_free(bn);
     return ok;
 }
 

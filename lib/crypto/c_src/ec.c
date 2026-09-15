@@ -509,7 +509,7 @@ err:
     if (group_name != group_name_buf) enif_free(group_name);
     if (pub_key) EC_POINT_free(pub_key);
     if (ec_group) EC_GROUP_free(ec_group);
-    if (priv_bn) BN_free(priv_bn);
+    if (priv_bn) BN_clear_free(priv_bn);
 
     return ok;
 }

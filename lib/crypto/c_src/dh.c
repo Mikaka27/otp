@@ -158,7 +158,7 @@ ERL_NIF_TERM dh_generate_key_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM ar
 
  done:
     if (pub_key_gen)  BN_free(pub_key_gen);
-    if (priv_key_gen) BN_free(priv_key_gen);
+    if (priv_key_gen) BN_clear_free(priv_key_gen);
     if (pkey) EVP_PKEY_free(pkey);
     if (pkey_gen) EVP_PKEY_free(pkey_gen);
     if (pctx) EVP_PKEY_CTX_free(pctx);
@@ -403,7 +403,7 @@ ERL_NIF_TERM dh_generate_key_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM ar
  err:
  done:
     if (priv_key_in)
-        BN_free(priv_key_in);
+        BN_clear_free(priv_key_in);
     if (dh_p)
         BN_free(dh_p);
     if (dh_g)
@@ -512,13 +512,13 @@ ERL_NIF_TERM dh_compute_key_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM arg
     if (other_pub_key)
         BN_free(other_pub_key);
     if (priv_key)
-        BN_free(priv_key);
+        BN_clear_free(priv_key);
     if (dh_p)
         BN_free(dh_p);
     if (dh_g)
         BN_free(dh_g);
     if (dummy_pub_key)
-        BN_free(dummy_pub_key);
+        BN_clear_free(dummy_pub_key);
     if (dh_priv)
         DH_free(dh_priv);
 
