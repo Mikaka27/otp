@@ -230,7 +230,7 @@ int get_dss_private_key(ErlNifEnv* env, ERL_NIF_TERM key, EVP_PKEY **pkey)
     if (dsa_g)
         BN_free(dsa_g);
     if (priv_key)
-        BN_free(priv_key);
+        BN_clear_free(priv_key);
     if (dummy_pub_key)
         BN_free(dummy_pub_key);
     return 0;
