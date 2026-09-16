@@ -359,6 +359,7 @@ ERL_NIF_TERM ec_generate_key_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM ar
     size_t sz, order_size = 0;
     BIGNUM *priv_bn = NULL;
     ErlNifBinary pubkey_bin;
+    int pubkey_bin_alloc = 0;
     
     if (argv[1] != atom_undefined)
         {
@@ -412,6 +413,7 @@ ERL_NIF_TERM ec_generate_key_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM ar
 
             if (!enif_alloc_binary(sz, &pubkey_bin))
                 assign_goto(ret, err, EXCP_ERROR(env, "Can't allocate pub octet string"));
+            pubkey_bin_alloc = 1;
 
             if (!EVP_PKEY_get_octet_string_param(pkey, "encoded-pub-key",
                                                  pubkey_bin.data,
@@ -428,11 +430,13 @@ ERL_NIF_TERM ec_generate_key_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM ar
     ret = enif_make_tuple2(env,
                            enif_make_binary(env, &pubkey_bin),
                            bn2term(env, order_size, priv_bn));
+    pubkey_bin_alloc = 0;
  err:
     if (pkey) EVP_PKEY_free(pkey);
     if (peer_pkey) EVP_PKEY_free(peer_pkey);
     if (pctx) EVP_PKEY_CTX_free(pctx);
-    if (priv_bn) BN_free(priv_bn);
+    if (priv_bn) BN_clear_free(priv_bn);
+    if (pubkey_bin_alloc) enif_release_binary(&pubkey_bin);
 
     return ret;
 }
