@@ -504,6 +504,8 @@ handle_exit(ClientPid, SubscrTab) ->
     ?ets_delete(SubscrTab, ClientPid).
 
 do_handle_exit([{ClientPid, What} | Tail]) ->
+    %% Handling exit for client pid
+    ?eval_debug_fun({?MODULE, do_handle_exit}, [{client_pid, ClientPid}, {what, What}]),
     case What of
 	system ->
 	    del_subscr(subscribers, What, ClientPid);
