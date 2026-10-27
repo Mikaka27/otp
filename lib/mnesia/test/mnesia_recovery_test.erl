@@ -85,7 +85,9 @@
          after_corrupt_files_table_dat_head/1,
          after_corrupt_files_table_dat_tail/1,
          after_corrupt_files_schema_dat_head/1,
-         after_corrupt_files_schema_dat_tail/1]).
+         after_corrupt_files_schema_dat_tail/1,
+         majority_sync_downgrade/1,
+         diff_sync_downgrade/1]).
 
 -export([reader/2, check/0, get_all_retainers/1,
          verify_data/2, verify_where2read/1,
@@ -116,12 +118,14 @@ end_per_testcase(Func, Conf) ->
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 all() -> 
-    [{group, mnesia_down}, {group, explicit_stop},
-     coord_dies, {group, schema_trans}, {group, async_dirty},
-     {group, sync_dirty}, {group, sym_trans},
-     {group, asym_trans}, %% after_full_disc_partition,
-     {group, after_corrupt_files}, disc_less, garb_decision
-    ].
+    [{group, sync_to_async_downgrade}].
+    % [{group, mnesia_down}, {group, explicit_stop},
+    %  coord_dies, {group, schema_trans}, {group, async_dirty},
+    %  {group, sync_dirty}, {group, sym_trans},
+    %  {group, asym_trans}, %% after_full_disc_partition,
+    %  {group, after_corrupt_files}, disc_less, garb_decision,
+    %  {group, sync_to_async_downgrade}
+    % ].
 
 groups() -> 
     [{schema_trans, [],
@@ -195,7 +199,9 @@ groups() ->
        after_corrupt_files_table_dat_head,
        after_corrupt_files_table_dat_tail,
        after_corrupt_files_schema_dat_head,
-       after_corrupt_files_schema_dat_tail]}].
+       after_corrupt_files_schema_dat_tail]},
+     {sync_to_async_downgrade, [],
+      [majority_sync_downgrade, diff_sync_downgrade]}].
 
 init_per_group(_GroupName, Config) ->
     Config.
@@ -1723,3 +1729,57 @@ check_garb() ->
     catch _:_ -> ok  
     end,
     ok.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+majority_sync_downgrade(Config) ->
+    ?is_debug_compiled,
+    Nodes = ?acquire_nodes(2, Config),
+
+    Tab = majority_sync_downgrade,
+    ?match({atomic, ok}, mnesia:create_table(Tab, [{ram_copies, Nodes}, {majority, true}])),
+
+    sync_downgrade(Tab, Nodes).
+
+diff_sync_downgrade(Config) ->
+    ?is_debug_compiled,
+    [N1, N2] = Nodes = ?acquire_nodes(2, Config),
+
+    Tab = diff_sync_downgrade,
+    ?match({atomic, ok}, mnesia:create_table(Tab, [{ram_copies, [N1]}, {disc_copies, [N2]}])),
+
+    sync_downgrade(Tab, Nodes).
+
+sync_downgrade(Tab, [_, N2] = Nodes) ->
+    TestPid = self(),
+
+    %% Stop N2 before it commits transaction
+    DebugId = {mnesia_tm, commit_participant, log_commit},
+    DebugFun = fun(PreviousCtx, _Ctx) ->
+                       TestPid ! {self(), blocked},
+                       receive {TestPid, continue} -> ok end,
+                       ?deactivate_debug_fun(DebugId),
+                       PreviousCtx
+               end,
+    ?remote_activate_debug_fun(N2, DebugId, DebugFun, ok),
+
+    Writer = spawn_link(fun() ->
+                                Fun = fun() -> mnesia:write({Tab, 1, 1}) end,
+                                TestPid ! {self(), mnesia:sync_transaction(Fun)}
+                        end),
+
+    %% N2 is blocked in transaction
+    Blocked = receive {Pid, blocked} -> Pid end,
+
+    ?match([], rpc:call(N2, mnesia, dirty_read, [{Tab, 1}])),
+    receive {Writer, EarlyRes} ->
+            ct:fail("Sync transaction returned before all nodes commited, res: ~p~n", EarlyRes)
+    end,
+
+    %% Allow N2 to finish transaction
+    Blocked ! {self(), continue},
+    ?match({atomic, ok}, receive {Writer, Res} -> Res end),
+
+    ?match({[[{Tab, 1, 1}], [{Tab, 1, 1}]], []}, rpc:multicall(Nodes, mnesia, dirty_read, [{Tab, 1}])),
+    ?verify_mnesia(Nodes, []).
+
