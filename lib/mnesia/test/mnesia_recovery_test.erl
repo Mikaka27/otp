@@ -1735,18 +1735,22 @@ check_garb() ->
 majority_sync_downgrade(Config) ->
     ?is_debug_compiled,
     Nodes = ?acquire_nodes(2, Config),
+    ct:pal("~p: acquired nodes ~p", [?FUNCTION_NAME, Nodes]),
 
     Tab = majority_sync_downgrade,
     ?match({atomic, ok}, mnesia:create_table(Tab, [{ram_copies, Nodes}, {majority, true}])),
+    ct:pal("~p: table ~p created", [?FUNCTION_NAME, Tab]),
 
     sync_downgrade(Tab, Nodes).
 
 diff_sync_downgrade(Config) ->
     ?is_debug_compiled,
     [N1, N2] = Nodes = ?acquire_nodes(2, Config),
+    ct:pal("~p: acquired nodes ~p", [?FUNCTION_NAME, Nodes]),
 
     Tab = diff_sync_downgrade,
     ?match({atomic, ok}, mnesia:create_table(Tab, [{ram_copies, [N1]}, {disc_copies, [N2]}])),
+    ct:pal("~p: table ~p created", [?FUNCTION_NAME, Tab]),
 
     sync_downgrade(Tab, Nodes).
 
@@ -1761,25 +1765,36 @@ sync_downgrade(Tab, [_, N2] = Nodes) ->
                        ?deactivate_debug_fun(DebugId),
                        PreviousCtx
                end,
+    ct:pal("sync_downgrade: activating debug fun ~p on ~p", [DebugId, N2]),
     ?remote_activate_debug_fun(N2, DebugId, DebugFun, ok),
+    ct:pal("sync_downgrade: debug fun activated"),
 
     Writer = spawn_link(fun() ->
                                 Fun = fun() -> mnesia:write({Tab, 1, 1}) end,
                                 TestPid ! {self(), mnesia:sync_transaction(Fun)}
                         end),
+    ct:pal("sync_downgrade: writer ~p spawned, waiting for blocked", [Writer]),
 
     %% N2 is blocked in transaction
     Blocked = receive {Pid, blocked} -> Pid end,
+    ct:pal("sync_downgrade: ~p blocked in commit_participant on ~p", [Blocked, N2]),
 
     ?match([], rpc:call(N2, mnesia, dirty_read, [{Tab, 1}])),
+    ct:pal("sync_downgrade: dirty_read on ~p returned [], checking for early result", [N2]),
     receive {Writer, EarlyRes} ->
-            ct:fail("Sync transaction returned before all nodes commited, res: ~p~n", EarlyRes)
+            ct:fail("Sync transaction returned before all nodes commited, res: ~p~n", [EarlyRes])
+    after 1000 -> ok
     end,
+    ct:pal("sync_downgrade: no early result"),
 
     %% Allow N2 to finish transaction
     Blocked ! {self(), continue},
+    ct:pal("sync_downgrade: sent continue to ~p, waiting for writer result", [Blocked]),
     ?match({atomic, ok}, receive {Writer, Res} -> Res end),
+    ct:pal("sync_downgrade: writer returned {atomic, ok}"),
 
     ?match({[[{Tab, 1, 1}], [{Tab, 1, 1}]], []}, rpc:multicall(Nodes, mnesia, dirty_read, [{Tab, 1}])),
-    ?verify_mnesia(Nodes, []).
+    ct:pal("sync_downgrade: data verified on all nodes, running verify_mnesia"),
+    ?verify_mnesia(Nodes, []),
+    ct:pal("sync_downgrade: done").
 
